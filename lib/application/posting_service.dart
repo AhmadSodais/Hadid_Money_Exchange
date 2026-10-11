@@ -55,7 +55,7 @@ final class PostingService {
 
         await _checkParties(txn, command);
         await _checkClosedDays(txn, plan.journal, command.effectiveDate);
-        await _checkNegativeCash(txn, plan.journal, command.effectiveDate);
+        await _checkNegativeCash(txn, [(command.effectiveDate, plan.journal)]);
         if (command is OpeningCashCommand || command is OpeningCustomerCommand) {
           await _checkOpeningUnique(txn, command);
         }
@@ -101,88 +101,70 @@ final class PostingService {
     required Actor actor,
     required String idempotencyKey,
     BusinessDate? effectiveDate,
+  }) =>
+      _reverse(
+        transactionId: transactionId,
+        reason: reason,
+        actor: actor,
+        idempotencyKey: idempotencyKey,
+        date: effectiveDate ?? BusinessDate.today(_clock()),
+        label: 'برگشت',
+      );
+
+  /// "Deletes" a transaction the only way the ledger allows: a full reversal
+  /// dated on the **original's** effective date, so every balance, report,
+  /// and daily cash figure of that day reads as if it had never been posted.
+  /// The original and its reversal remain for the audit trail.
+  Future<PostedTransaction> delete({
+    required int transactionId,
+    required String reason,
+    required Actor actor,
+    required String idempotencyKey,
+  }) =>
+      _reverse(
+        transactionId: transactionId,
+        reason: reason,
+        actor: actor,
+        idempotencyKey: idempotencyKey,
+        date: null,
+        label: 'حذف',
+      );
+
+  /// [date] null = the original transaction's own effective date.
+  Future<PostedTransaction> _reverse({
+    required int transactionId,
+    required String reason,
+    required Actor actor,
+    required String idempotencyKey,
+    required BusinessDate? date,
+    required String label,
   }) async {
     if (!actor.can(Permissions.transactionsReverse)) {
-      throw const AuthorizationError('auth.denied', 'اجازه برگشت معامله را ندارید.');
+      throw AuthorizationError('auth.denied', 'اجازه $label معامله را ندارید.');
     }
     if (reason.trim().isEmpty) {
-      throw const ValidationError('reason.required', 'ذکر دلیل برگشت الزامی است.',
-          field: 'reason');
+      throw ValidationError('reason.required', 'ذکر دلیل $label الزامی است.', field: 'reason');
     }
     final existing = await _byIdempotencyKey(_db, idempotencyKey);
     if (existing != null) return _sameOrConflict(existing, TransactionType.reversal);
 
-    final date = effectiveDate ?? BusinessDate.today(_clock());
     final int revId;
     try {
-      await _validateDate(date);
       revId = await _db.transaction((txn) async {
-        final rows = await txn.query('transactions', where: 'id = ?', whereArgs: [transactionId]);
-        if (rows.isEmpty) {
-          throw const NotFoundError('transaction.notFound', 'معامله پیدا نشد.');
-        }
-        final original = rows.first;
-        if (original['type'] == TransactionType.reversal.name) {
-          throw const BusinessRuleError('reversal.ofReversal',
-              'سند برگشت قابل برگشت نیست؛ معامله صحیح را دوباره ثبت کنید.');
-        }
-        if (original['status'] != TransactionStatus.posted.name) {
-          throw const BusinessRuleError('reversal.repeated', 'این معامله قبلاً برگشت شده است.');
-        }
-
-        final lineRows = await txn.rawQuery('''
-          SELECT l.account_id, l.currency_code, l.debit_minor, l.credit_minor, l.memo
-          FROM journal_lines l JOIN journal_entries e ON e.id = l.journal_entry_id
-          WHERE e.transaction_id = ? ORDER BY l.line_no
-        ''', [transactionId]);
-        final journal = JournalDraft([
-          for (final l in lineRows)
-            JournalLineDraft(
-              account: ResolvedAccountRef(l['account_id'] as int),
-              currency: l['currency_code'] as String,
-              debitMinor: l['debit_minor'] as int,
-              creditMinor: l['credit_minor'] as int,
-              memo: l['memo'] as String?,
-            ),
-        ]).reversed();
-        journal.validate();
-        await _checkClosedDays(txn, journal, date);
-        await _checkNegativeCash(txn, journal, date);
-
-        final now = _clock().toUtc().toIso8601String();
-        final type = TransactionType.reversal;
-        final id = await txn.insert('transactions', {
-          'uuid': _uuid.v4(),
-          'reference_no': await _nextReference(txn, type),
-          'type': type.name,
-          'status': TransactionStatus.posted.name,
-          'customer_id': original['customer_id'],
-          'drawer_id': original['drawer_id'],
-          'effective_date': date.iso,
-          'created_at': now,
-          'posted_at': now,
-          'created_by': actor.userId,
-          'description': 'برگشت ${original['reference_no']}',
-          'source_currency': original['source_currency'],
-          'source_amount_minor': original['source_amount_minor'],
-          'dest_currency': original['dest_currency'],
-          'dest_amount_minor': original['dest_amount_minor'],
-          'rate': original['rate'],
-          'rate_convention': original['rate_convention'],
-          'signed_amount_minor': original['signed_amount_minor'],
-          'reverses_transaction_id': transactionId,
-          'reason': reason.trim(),
-          'idempotency_key': idempotencyKey,
-        });
-        await _insertJournal(txn, id, date, 'برگشت ${original['reference_no']}', journal);
-        await txn.update(
-          'transactions',
-          {'status': TransactionStatus.reversed.name, 'reversed_by_transaction_id': id},
-          where: 'id = ?',
-          whereArgs: [transactionId],
-        );
-        await txn.update('opening_balances', {'is_active': 0},
-            where: 'transaction_id = ?', whereArgs: [transactionId]);
+        final original = await _reversibleOriginal(txn, transactionId);
+        final reversalDate = date ?? BusinessDate.parse(original['effective_date'] as String);
+        await _validateDate(reversalDate, using: txn, editing: date == null);
+        final journal = await _reversalJournal(txn, transactionId);
+        await _checkClosedDays(txn, journal, reversalDate);
+        await _checkNegativeCash(txn, [(reversalDate, journal)]);
+        final id = await _insertReversal(txn,
+            original: original,
+            journal: journal,
+            date: reversalDate,
+            reason: reason.trim(),
+            idempotencyKey: idempotencyKey,
+            actor: actor,
+            description: '$label ${original['reference_no']}');
         await AuditWriter.write(txn,
             actor: actor,
             action: 'transaction.reverse',
@@ -191,7 +173,7 @@ final class PostingService {
             transactionId: id,
             reason: reason.trim(),
             before: {'status': 'posted'},
-            after: {'status': 'reversed', 'reversal_id': id});
+            after: {'status': 'reversed', 'reversal_id': id, 'mode': date == null ? 'delete' : 'reverse'});
         return id;
       });
     } on DomainError catch (e) {
@@ -206,12 +188,237 @@ final class PostingService {
     return (await transactionById(revId))!;
   }
 
+  // --------------------------------------------------------------- correct
+
+  /// Types an existing transaction may be edited into. Receipt/payment and
+  /// buy/sell may be swapped (a common data-entry mistake); adjustments are
+  /// tied to a specific reconciliation difference and can only be deleted.
+  static Set<TransactionType> correctableInto(TransactionType original) => switch (original) {
+        TransactionType.receipt || TransactionType.payment => const {
+            TransactionType.receipt,
+            TransactionType.payment,
+          },
+        TransactionType.buy || TransactionType.sell => const {
+            TransactionType.buy,
+            TransactionType.sell,
+          },
+        TransactionType.expense => const {TransactionType.expense},
+        TransactionType.openingCash => const {TransactionType.openingCash},
+        TransactionType.openingCustomer => const {TransactionType.openingCustomer},
+        _ => const {},
+      };
+
+  /// Edits a posted transaction. In **one** database transaction the
+  /// original is reversed on its own effective date and [replacement] is
+  /// posted, so the ledger never shows a half-applied edit. Cash and closed-
+  /// day checks are evaluated on the combined effect of both journals.
+  ///
+  /// Returns the replacement. [replacement]'s idempotency key makes a
+  /// repeated submission return the same result instead of editing twice.
+  Future<PostedTransaction> correct({
+    required int transactionId,
+    required FinancialCommand replacement,
+    required String reason,
+    required Actor actor,
+  }) async {
+    if (!actor.can(Permissions.transactionsReverse)) {
+      throw const AuthorizationError('auth.denied', 'اجازه ویرایش معامله را ندارید.');
+    }
+    _authorize(replacement, actor);
+    if (reason.trim().isEmpty) {
+      throw const ValidationError('reason.required', 'ذکر دلیل ویرایش الزامی است.',
+          field: 'reason');
+    }
+    final existing = await _byIdempotencyKey(_db, replacement.idempotencyKey);
+    if (existing != null) return _sameOrConflict(existing, replacement.type);
+
+    final int newId;
+    try {
+      final currencies = await _catalog.currencies();
+      final walkIn = await _catalog.walkInCustomerId();
+      final plan = PostingRules(currencies, walkInCustomerId: walkIn).plan(replacement);
+      await _validateDate(replacement.effectiveDate);
+
+      newId = await _db.transaction((txn) async {
+        final raced = await _byIdempotencyKey(txn, replacement.idempotencyKey);
+        if (raced != null) return raced.id;
+
+        final original = await _reversibleOriginal(txn, transactionId);
+        final originalType = TransactionType.parse(original['type'] as String);
+        if (!correctableInto(originalType).contains(replacement.type)) {
+          throw BusinessRuleError('correction.typeNotAllowed',
+              '«${originalType.labelFa}» را نمی‌توان به «${replacement.type.labelFa}» تغییر داد؛ '
+              'آن را حذف و معامله صحیح را جداگانه ثبت کنید.');
+        }
+        final originalDate = BusinessDate.parse(original['effective_date'] as String);
+        await _validateDate(originalDate, using: txn, editing: true);
+
+        final reversal = await _reversalJournal(txn, transactionId);
+        await _checkClosedDays(txn, reversal, originalDate);
+        await _checkClosedDays(txn, plan.journal, replacement.effectiveDate);
+        await _checkNegativeCash(txn, [
+          (originalDate, reversal),
+          (replacement.effectiveDate, plan.journal),
+        ]);
+        await _checkParties(txn, replacement);
+
+        final revId = await _insertReversal(txn,
+            original: original,
+            journal: reversal,
+            date: originalDate,
+            reason: reason.trim(),
+            idempotencyKey: '${replacement.idempotencyKey}:reversal',
+            actor: actor,
+            description: 'ویرایش ${original['reference_no']}');
+        // The original's opening row was deactivated by the reversal above.
+        if (replacement is OpeningCashCommand || replacement is OpeningCustomerCommand) {
+          await _checkOpeningUnique(txn, replacement);
+        }
+        final id = await _insertTransaction(txn, replacement, plan, actor);
+        await _insertJournal(
+            txn, id, replacement.effectiveDate, replacement.description, plan.journal);
+        await _afterInsert(txn, id, replacement);
+        await txn.insert('transaction_corrections', {
+          'original_transaction_id': transactionId,
+          'reversal_transaction_id': revId,
+          'replacement_transaction_id': id,
+          'reason': reason.trim(),
+          'created_by': actor.userId,
+          'created_at': _clock().toUtc().toIso8601String(),
+        });
+        await AuditWriter.write(txn,
+            actor: actor,
+            action: 'transaction.correct',
+            entityType: 'transaction',
+            entityId: '$transactionId',
+            transactionId: id,
+            reason: reason.trim(),
+            before: {
+              'type': originalType.name,
+              'date': originalDate.iso,
+              'reference': original['reference_no'],
+            },
+            after: {
+              'type': replacement.type.name,
+              'date': replacement.effectiveDate.iso,
+              'reversal_id': revId,
+              'replacement_id': id,
+            });
+        return id;
+      });
+    } on DomainError catch (e) {
+      await _auditFailure(actor, 'transaction.correct', '$transactionId', e.message);
+      rethrow;
+    } on DatabaseException catch (e) {
+      if (e.isUniqueConstraintError('transactions.idempotency_key')) {
+        final again = await _byIdempotencyKey(_db, replacement.idempotencyKey);
+        if (again != null) return again;
+      }
+      await _auditFailure(actor, 'transaction.correct', '$transactionId', '$e');
+      throw PersistenceError('db.write', _friendlyDbError(e), cause: e);
+    }
+
+    _events.notify(LedgerChange.posting);
+    return (await transactionById(newId))!;
+  }
+
+  // ------------------------------------------------------ reversal helpers
+
+  Future<Map<String, Object?>> _reversibleOriginal(Transaction txn, int transactionId) async {
+    final rows = await txn.query('transactions', where: 'id = ?', whereArgs: [transactionId]);
+    if (rows.isEmpty) {
+      throw const NotFoundError('transaction.notFound', 'معامله پیدا نشد.');
+    }
+    final original = rows.first;
+    if (original['type'] == TransactionType.reversal.name) {
+      throw const BusinessRuleError('reversal.ofReversal',
+          'سند برگشت قابل برگشت نیست؛ معامله صحیح را دوباره ثبت کنید.');
+    }
+    if (original['status'] != TransactionStatus.posted.name) {
+      throw const BusinessRuleError(
+          'reversal.repeated', 'این معامله قبلاً حذف، ویرایش یا برگشت شده است.');
+    }
+    return original;
+  }
+
+  /// The equal-and-opposite journal of a posted transaction.
+  Future<JournalDraft> _reversalJournal(Transaction txn, int transactionId) async {
+    final lineRows = await txn.rawQuery('''
+      SELECT l.account_id, l.currency_code, l.debit_minor, l.credit_minor, l.memo
+      FROM journal_lines l JOIN journal_entries e ON e.id = l.journal_entry_id
+      WHERE e.transaction_id = ? ORDER BY l.line_no
+    ''', [transactionId]);
+    final journal = JournalDraft([
+      for (final l in lineRows)
+        JournalLineDraft(
+          account: ResolvedAccountRef(l['account_id'] as int),
+          currency: l['currency_code'] as String,
+          debitMinor: l['debit_minor'] as int,
+          creditMinor: l['credit_minor'] as int,
+          memo: l['memo'] as String?,
+        ),
+    ]).reversed();
+    journal.validate();
+    return journal;
+  }
+
+  /// Inserts the reversal document, marks the original `reversed`, and
+  /// deactivates its opening-balance row. Returns the reversal id.
+  Future<int> _insertReversal(
+    Transaction txn, {
+    required Map<String, Object?> original,
+    required JournalDraft journal,
+    required BusinessDate date,
+    required String reason,
+    required String idempotencyKey,
+    required Actor actor,
+    required String description,
+  }) async {
+    final originalId = original['id'] as int;
+    final now = _clock().toUtc().toIso8601String();
+    final type = TransactionType.reversal;
+    final id = await txn.insert('transactions', {
+      'uuid': _uuid.v4(),
+      'reference_no': await _nextReference(txn, type),
+      'type': type.name,
+      'status': TransactionStatus.posted.name,
+      'customer_id': original['customer_id'],
+      'drawer_id': original['drawer_id'],
+      'effective_date': date.iso,
+      'created_at': now,
+      'posted_at': now,
+      'created_by': actor.userId,
+      'description': description,
+      'source_currency': original['source_currency'],
+      'source_amount_minor': original['source_amount_minor'],
+      'dest_currency': original['dest_currency'],
+      'dest_amount_minor': original['dest_amount_minor'],
+      'rate': original['rate'],
+      'rate_convention': original['rate_convention'],
+      'signed_amount_minor': original['signed_amount_minor'],
+      'reverses_transaction_id': originalId,
+      'reason': reason,
+      'idempotency_key': idempotencyKey,
+    });
+    await _insertJournal(txn, id, date, description, journal);
+    await txn.update(
+      'transactions',
+      {'status': TransactionStatus.reversed.name, 'reversed_by_transaction_id': id},
+      where: 'id = ?',
+      whereArgs: [originalId],
+    );
+    await txn.update('opening_balances', {'is_active': 0},
+        where: 'transaction_id = ?', whereArgs: [originalId]);
+    return id;
+  }
+
   // ----------------------------------------------------------------- reads
 
   Future<PostedTransaction?> transactionById(int id, {DatabaseExecutor? using}) async {
     final db = using ?? _db;
     final rows = await db.rawQuery('''
-      SELECT t.*, c.name AS customer_name, u.display_name AS created_by_name
+      SELECT t.*, c.name AS customer_name, u.display_name AS created_by_name,
+        $kCorrectionLinkColumns
       FROM transactions t
       LEFT JOIN customers c ON c.id = t.customer_id
       LEFT JOIN users u ON u.id = t.created_by
@@ -258,16 +465,26 @@ final class PostingService {
     return transactionById(rows.first['id'] as int, using: db);
   }
 
-  Future<void> _validateDate(BusinessDate date) async {
+  /// Inside a database transaction pass [using]: a query on the outer
+  /// connection would wait for the transaction's lock forever.
+  /// [editing] words the too-old error for edits/deletes of an existing row.
+  Future<void> _validateDate(BusinessDate date,
+      {DatabaseExecutor? using, bool editing = false}) async {
     final today = BusinessDate.today(_clock());
     if (date.isAfter(today)) {
       throw const ValidationError('date.future', 'ثبت معامله با تاریخ آینده مجاز نیست.',
           field: 'date');
     }
-    final maxBack = int.tryParse(await _catalog.setting('posting.max_backdate_days') ?? '') ?? 0;
+    final maxBack = int.tryParse(
+            await _catalog.setting('posting.max_backdate_days', using: using) ?? '') ??
+        0;
     if (maxBack > 0 && date.daysUntil(today) > maxBack) {
-      throw ValidationError('date.tooOld',
-          'ثبت معامله با تاریخ بیش از $maxBack روز قبل مجاز نیست (تنظیمات).',
+      throw ValidationError(
+          'date.tooOld',
+          editing
+              ? 'این معامله بیش از $maxBack روز قبل ثبت شده و ویرایش یا حذف آن مجاز نیست '
+                  '(تنظیمات: حداکثر روزهای ثبت با تاریخ گذشته).'
+              : 'ثبت معامله با تاریخ بیش از $maxBack روز قبل مجاز نیست (تنظیمات).',
           field: 'date');
     }
   }
@@ -326,42 +543,48 @@ final class PostingService {
     }
   }
 
-  /// Physical cash cannot be negative. Rejects a posting if the drawer's
-  /// balance in any affected currency would drop below zero on the effective
-  /// date or on any later date (backdated outflows are checked too).
-  /// Disabled when `posting.allow_negative_cash` = 1.
+  /// Physical cash cannot be negative. Rejects the [changes] (journals to be
+  /// posted, each on its date) if a drawer's balance in any affected currency
+  /// would drop below zero on any date from the earliest change onward
+  /// (backdated outflows are checked too). Several changes are evaluated
+  /// together, so an edit is judged by its net effect, not by its reversal
+  /// half alone. Disabled when `posting.allow_negative_cash` = 1.
   Future<void> _checkNegativeCash(
-      Transaction txn, JournalDraft journal, BusinessDate date) async {
+      Transaction txn, List<(BusinessDate, JournalDraft)> changes) async {
     if (await _catalog.setting('posting.allow_negative_cash', using: txn) == '1') return;
-    final nets = <(int, String), int>{};
-    for (final line in journal.lines) {
-      final drawerId = await _drawerForAccountRef(txn, line.account);
-      if (drawerId == null) continue;
-      nets.update((drawerId, line.currency), (v) => v + line.net, ifAbsent: () => line.net);
-    }
-    for (final MapEntry(key: (drawerId, currency), value: net) in nets.entries) {
-      if (net >= 0) continue;
-      final rows = await txn.rawQuery('''
-        SELECT
-          (SELECT COALESCE(SUM(l.debit_minor - l.credit_minor), 0)
-             FROM journal_lines l JOIN accounts a ON a.id = l.account_id
-             WHERE a.drawer_id = ? AND l.currency_code = ? AND l.effective_date <= ?) AS at_date,
-          (SELECT GROUP_CONCAT(d.n, ',') FROM (
-             SELECT SUM(l.debit_minor - l.credit_minor) AS n
-             FROM journal_lines l JOIN accounts a ON a.id = l.account_id
-             WHERE a.drawer_id = ? AND l.currency_code = ? AND l.effective_date > ?
-             GROUP BY l.effective_date ORDER BY l.effective_date) d) AS later
-      ''', [drawerId, currency, date.iso, drawerId, currency, date.iso]);
-      var running = (rows.first['at_date'] as int) + net;
-      var minimum = running;
-      final later = rows.first['later'] as String?;
-      if (later != null) {
-        for (final part in later.split(',')) {
-          running += int.parse(part);
-          if (running < minimum) minimum = running;
-        }
+    final deltas = <(int, String), Map<String, int>>{};
+    for (final (date, journal) in changes) {
+      for (final line in journal.lines) {
+        final drawerId = await _drawerForAccountRef(txn, line.account);
+        if (drawerId == null) continue;
+        deltas
+            .putIfAbsent((drawerId, line.currency), () => {})
+            .update(date.iso, (v) => v + line.net, ifAbsent: () => line.net);
       }
-      if (minimum < 0) {
+    }
+    for (final MapEntry(key: (drawerId, currency), value: byDate) in deltas.entries) {
+      if (byDate.values.every((v) => v >= 0)) continue;
+      final first = byDate.keys.reduce((a, b) => a.compareTo(b) <= 0 ? a : b);
+      final before = await txn.rawQuery('''
+        SELECT COALESCE(SUM(l.debit_minor - l.credit_minor), 0) AS b
+        FROM journal_lines l JOIN accounts a ON a.id = l.account_id
+        WHERE a.drawer_id = ? AND l.currency_code = ? AND l.effective_date < ?
+      ''', [drawerId, currency, first]);
+      final daily = await txn.rawQuery('''
+        SELECT l.effective_date AS d, SUM(l.debit_minor - l.credit_minor) AS n
+        FROM journal_lines l JOIN accounts a ON a.id = l.account_id
+        WHERE a.drawer_id = ? AND l.currency_code = ? AND l.effective_date >= ?
+        GROUP BY l.effective_date
+      ''', [drawerId, currency, first]);
+      final nets = <String, int>{for (final r in daily) r['d'] as String: r['n'] as int};
+      byDate.forEach((d, v) => nets.update(d, (n) => n + v, ifAbsent: () => v));
+      var running = before.first['b'] as int;
+      int? minimum;
+      for (final d in nets.keys.toList()..sort()) {
+        running += nets[d]!;
+        if (minimum == null || running < minimum) minimum = running;
+      }
+      if (minimum != null && minimum < 0) {
         throw BusinessRuleError('cash.insufficient',
             'موجودی صندوق در $currency کافی نیست؛ این معامله موجودی را منفی می‌کند.');
       }

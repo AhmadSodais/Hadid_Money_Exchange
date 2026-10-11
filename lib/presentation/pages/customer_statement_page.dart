@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
@@ -7,6 +8,7 @@ import '../../application/read_models.dart';
 import '../../core/constants/app_assets.dart';
 import '../../core/constants/app_routes.dart';
 import '../../core/theme/app_colors.dart';
+import '../../core/theme/app_radius.dart';
 import '../../core/theme/app_spacing.dart';
 import '../../core/theme/app_typography.dart';
 import '../../core/widgets/widgets.dart';
@@ -14,12 +16,10 @@ import '../../domain/money/currency.dart';
 import '../../domain/security/permissions.dart';
 import '../../domain/shared/business_date.dart';
 import '../../domain/transactions/financial_command.dart';
-import '../../infrastructure/export/excel_export.dart';
 import '../format/money_format.dart';
 import '../session/app_session.dart';
 import '../widgets/app_shell.dart';
 import '../widgets/exchange_ui.dart';
-import '../widgets/export_action.dart';
 import '../widgets/transaction_detail_dialog.dart';
 
 class CustomerStatementPage extends StatefulWidget {
@@ -76,35 +76,6 @@ class _CustomerStatementPageState extends State<CustomerStatementPage> with Revi
     });
   }
 
-  void _export() {
-    final st = _statement, c = _currency, customer = _customer;
-    if (st == null || c == null || customer == null) return;
-    exportSheets(context, 'statement_${customer.code}_${c.code}', [
-      ExportSheet(
-        name: 'صورت‌حساب',
-        notes: [
-          'صورت‌حساب ${customer.name} (${customer.code}) — ${c.nameFa}',
-          'مثبت = طلب مشتری، منفی = بدهی مشتری',
-          'مانده ابتدای دوره: ${MoneyFormat.amount(st.openingPositionMinor, c)}',
-        ],
-        headers: const ['تاریخ', 'شماره سند', 'نوع', 'شرح', 'بدهکار', 'بستانکار', 'مانده', 'وضعیت'],
-        rows: [
-          for (final l in st.lines)
-            [
-              DateFormatFa.business(l.effectiveDate),
-              l.referenceNo,
-              l.type.labelFa,
-              l.description ?? '',
-              MoneyFormat.amount(l.debitMinor, c),
-              MoneyFormat.amount(l.creditMinor, c),
-              MoneyFormat.amount(l.runningPositionMinor, c),
-              l.status == TransactionStatus.reversed ? 'برگشت‌شده' : 'ثبت‌شده',
-            ],
-        ],
-      ),
-    ]);
-  }
-
   @override
   Widget build(BuildContext context) {
     final s = context.watch<AppSession>();
@@ -114,7 +85,8 @@ class _CustomerStatementPageState extends State<CustomerStatementPage> with Revi
     final customer = _customer;
     final st = _statement;
     final c = _currency;
-    final currencies = s.currencies.values.toList()..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
+    final canOpening = s.can(Permissions.openingBalancesPost);
+    final canAdjust = s.can(Permissions.adjustmentsPost);
     return PageScaffold(
       title: customer == null ? 'صورت‌حساب مشتری' : 'صورت‌حساب ${customer.name}',
       subtitle: customer == null
@@ -122,23 +94,6 @@ class _CustomerStatementPageState extends State<CustomerStatementPage> with Revi
           : [customer.code, if (customer.phone != null) customer.phone!].join('  ·  '),
       leading: null,
       actions: [
-        GfSecondaryButton(
-          label: 'بازگشت',
-          icon: Icons.arrow_forward,
-          onPressed: () => context.go(AppRoutes.customers),
-        ),
-        if (customer != null && !customer.isWalkIn && s.can(Permissions.openingBalancesPost))
-          GfSecondaryButton(
-            label: 'بیلانس افتتاحیه',
-            icon: Icons.flag_outlined,
-            onPressed: () => _SignedAmountDialog.show(context, customer: customer, adjustment: false),
-          ),
-        if (customer != null && !customer.isWalkIn && s.can(Permissions.adjustmentsPost))
-          GfSecondaryButton(
-            label: 'اصلاح حساب',
-            icon: Icons.tune,
-            onPressed: () => _SignedAmountDialog.show(context, customer: customer, adjustment: true),
-          ),
         GfFilterChip(
           label: 'کل دوره',
           icon: Icons.all_inclusive,
@@ -155,7 +110,33 @@ class _CustomerStatementPageState extends State<CustomerStatementPage> with Revi
             reload();
           },
         ),
-        ExportButton(onPressed: st == null ? null : _export),
+        if (customer != null && !customer.isWalkIn && (canOpening || canAdjust))
+          GfActionMenu(
+            label: 'بیلانس و اصلاح حساب',
+            icon: Icons.account_balance_wallet_outlined,
+            width: 210,
+            items: [
+              if (canOpening)
+                GfActionMenuItem(
+                  icon: Icons.flag_outlined,
+                  title: 'بیلانس افتتاحیه',
+                  subtitle: 'ثبت مانده ابتدایی مشتری در یک ارز',
+                  onTap: () => _SignedAmountDialog.show(context, customer: customer, adjustment: false),
+                ),
+              if (canAdjust)
+                GfActionMenuItem(
+                  icon: Icons.tune,
+                  title: 'اصلاح حساب',
+                  subtitle: 'اصلاح مانده حساب با ذکر دلیل',
+                  onTap: () => _SignedAmountDialog.show(context, customer: customer, adjustment: true),
+                ),
+            ],
+          ),
+        GfSecondaryButton(
+          label: 'بازگشت',
+          icon: Icons.arrow_forward,
+          onPressed: () => context.go(AppRoutes.customers),
+        ),
       ],
       body: _loading || customer == null
           ? const GfPageLoader()
@@ -163,7 +144,6 @@ class _CustomerStatementPageState extends State<CustomerStatementPage> with Revi
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 Row(
-                  crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
                     GfCountBox(
                       label: 'ردیف‌های صورت‌حساب',
@@ -172,24 +152,32 @@ class _CustomerStatementPageState extends State<CustomerStatementPage> with Revi
                     ),
                     const SizedBox(width: 12),
                     Expanded(
-                      child: SingleChildScrollView(
-                        scrollDirection: Axis.horizontal,
-                        child: Row(
+                      child: LayoutBuilder(builder: (context, constraints) {
+                        final w = constraints.maxWidth;
+                        final columns = w >= 1100 ? 5 : (w >= 820 ? 4 : (w >= 560 ? 3 : 2));
+                        const gap = AppSpacing.sm;
+                        final cardWidth = (w - gap * (columns - 1)) / columns;
+                        return Wrap(
+                          spacing: gap,
+                          runSpacing: gap,
                           children: [
-                            for (final cur in currencies) ...[
-                              if (cur != currencies.first) const SizedBox(width: 8),
-                              GfFilterChip(
-                                label: _chipLabel(cur),
-                                selected: c?.code == cur.code,
-                                onTap: () {
-                                  setState(() => _currency = cur);
-                                  reload();
-                                },
-                              ),
-                            ],
+                            for (final b in _balances)
+                              if (s.currency(b.currency) case final cur?)
+                                SizedBox(
+                                  width: cardWidth,
+                                  child: _BalanceCard(
+                                    currency: cur,
+                                    positionMinor: b.positionMinor,
+                                    selected: c?.code == cur.code,
+                                    onTap: () {
+                                      setState(() => _currency = cur);
+                                      reload();
+                                    },
+                                  ),
+                                ),
                           ],
-                        ),
-                      ),
+                        );
+                      }),
                     ),
                   ],
                 ),
@@ -240,11 +228,109 @@ class _CustomerStatementPageState extends State<CustomerStatementPage> with Revi
     );
   }
 
-  String _chipLabel(Currency cur) {
-    for (final b in _balances) {
-      if (b.currency == cur.code) return '${cur.nameFa}: ${MoneyFormat.position(b.positionMinor, cur)}';
-    }
-    return cur.nameFa;
+}
+
+/// Smaller take on the dashboard currency card: the customer's overall
+/// position in one currency. Tapping it shows that currency's statement.
+class _BalanceCard extends StatelessWidget {
+  const _BalanceCard({
+    required this.currency,
+    required this.positionMinor,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final Currency currency;
+  final int positionMinor;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final (String status, Color tone) = positionMinor > 0
+        ? ('طلب مشتری', AppColors.success)
+        : positionMinor < 0
+            ? ('بدهی مشتری', AppColors.error)
+            : ('تسویه', AppColors.textMuted);
+    return Material(
+      color: selected ? AppColors.primarySoft : AppColors.card,
+      clipBehavior: Clip.antiAlias,
+      shape: RoundedRectangleBorder(
+        borderRadius: AppRadius.card,
+        side: BorderSide(color: selected ? AppColors.primary : AppColors.border, width: selected ? 1.5 : 1),
+      ),
+      child: InkWell(
+        onTap: onTap,
+        hoverColor: AppColors.hover,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      '${currency.nameFa} (${currency.code})',
+                      style: AppTypography.label.copyWith(fontSize: 11),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  SizedBox(
+                    width: 24,
+                    height: 24,
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: AppColors.primary.withValues(alpha: 0.12),
+                        borderRadius: AppRadius.input,
+                      ),
+                      child: Center(
+                        child: SvgPicture.asset(
+                          AppAssets.currenciesFilled,
+                          width: 14,
+                          height: 14,
+                          colorFilter: ColorFilter.mode(AppColors.primary, BlendMode.srcIn),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      MoneyFormat.amount(positionMinor.abs(), currency),
+                      style: AppTypography.kpiValue.copyWith(fontSize: 15, color: tone),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      textDirection: TextDirection.ltr,
+                      textAlign: TextAlign.end,
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: tone.withValues(alpha: 0.10),
+                      borderRadius: AppRadius.pill,
+                      border: Border.all(color: tone.withValues(alpha: 0.22)),
+                    ),
+                    child: Text(
+                      status,
+                      style: AppTypography.caption.copyWith(fontSize: 10, fontWeight: FontWeight.w600, color: tone),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
 
@@ -340,7 +426,7 @@ class _SignedAmountDialogState extends State<_SignedAmountDialog> {
       primaryIcon: Icons.save_outlined,
       onPrimary: _save,
       saving: _saving,
-      maxWidth: 460,
+      maxWidth: 580,
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         mainAxisSize: MainAxisSize.min,

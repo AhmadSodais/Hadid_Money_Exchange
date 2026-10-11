@@ -1,21 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../../application/posting_service.dart';
 import '../../application/read_models.dart';
-import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_typography.dart';
 import '../../core/widgets/gf_loader.dart';
-import '../../domain/security/permissions.dart';
 import '../../domain/transactions/financial_command.dart';
 import '../format/money_format.dart';
 import '../session/app_session.dart';
 import 'exchange_ui.dart';
 import 'order_detail_dialog_style.dart';
 import 'order_detail_info_card.dart';
+import 'transaction_actions.dart';
 
 /// Full view of one posted transaction: header, every journal line, links
-/// to its reversal, and the reversal action. Posted records are read-only.
+/// between edited/replacement/reversal versions, and edit/delete actions.
 class TransactionDetailDialog extends StatefulWidget {
   const TransactionDetailDialog({super.key, required this.transactionId});
 
@@ -37,8 +35,7 @@ class TransactionDetailDialog extends StatefulWidget {
 
 class _TransactionDetailDialogState extends State<TransactionDetailDialog> {
   PostedTransaction? _tx;
-  bool _reversing = false;
-  final String _reversalKey = PostingService.newIdempotencyKey();
+  bool _busy = false;
 
   @override
   void initState() {
@@ -51,42 +48,25 @@ class _TransactionDetailDialogState extends State<TransactionDetailDialog> {
     if (mounted) setState(() => _tx = tx);
   }
 
-  Future<void> _reverse() async {
+  Future<void> _edit() async {
+    final fixed = await TransactionActions.edit(context, _tx!);
+    if (fixed != null && mounted) await _load(fixed.id);
+  }
+
+  Future<void> _delete() async {
     final tx = _tx!;
-    final reason = await askReason(
-      context,
-      title: 'برگشت معامله ${tx.referenceNo}',
-      message: 'تمام بخش‌های این معامله (همه ارزها و کمیشن) با یک سند مخالف برگشت می‌شود. '
-          'سند اصلی حذف نمی‌شود و در روزنامچه با وضعیت «برگشت‌شده» باقی می‌ماند.',
-      confirmLabel: 'برگشت معامله',
-    );
-    if (reason == null || !mounted) return;
-    setState(() => _reversing = true);
-    final s = context.read<AppSession>();
-    final rev = await runAction(
-      context,
-      () => s.services.posting.reverse(
-        transactionId: tx.id,
-        reason: reason,
-        actor: s.actor,
-        idempotencyKey: _reversalKey,
-      ),
-      success: 'معامله برگشت شد.',
-    );
+    setState(() => _busy = true);
+    final deleted = await TransactionActions.delete(context, tx);
     if (!mounted) return;
-    setState(() => _reversing = false);
-    if (rev != null) await _load(tx.id);
+    setState(() => _busy = false);
+    if (deleted) await _load(tx.id);
   }
 
   @override
   Widget build(BuildContext context) {
     final s = context.watch<AppSession>();
     final tx = _tx;
-    final canReverse = tx != null &&
-        tx.status == TransactionStatus.posted &&
-        tx.type != TransactionType.reversal &&
-        s.can(Permissions.transactionsReverse);
-    final reversed = tx?.status == TransactionStatus.reversed;
+    final statusColor = tx == null ? OrderDetailDialogStyle.success : TransactionActions.statusColor(tx);
 
     return OrderDetailDialogFrame(
       icon: Icons.receipt_long_outlined,
@@ -96,17 +76,35 @@ class _TransactionDetailDialogState extends State<TransactionDetailDialog> {
       headerTrailing: tx == null
           ? null
           : OrderDetailStatusBadge(
-              label: reversed ? 'برگشت‌شده' : 'ثبت‌شده',
-              color: reversed ? AppColors.warning : OrderDetailDialogStyle.success,
-              background: reversed ? AppColors.warningBg : OrderDetailDialogStyle.successBg,
+              label: TransactionActions.statusLabel(tx),
+              color: statusColor,
+              background: statusColor.withValues(alpha: 0.12),
             ),
       footerStart: [
-        if (canReverse)
+        if (tx != null && TransactionActions.canEdit(tx, s))
           OrderDetailFooterAction(
-            label: _reversing ? 'در حال برگشت…' : 'برگشت معامله',
-            icon: Icons.undo_rounded,
+            label: 'ویرایش',
+            icon: Icons.edit_outlined,
+            onPressed: _busy ? null : _edit,
+          ),
+        if (tx != null && TransactionActions.canDelete(tx, s))
+          OrderDetailFooterAction(
+            label: _busy ? 'در حال حذف…' : 'حذف',
+            icon: Icons.delete_outline_rounded,
             danger: true,
-            onPressed: _reversing ? null : _reverse,
+            onPressed: _busy ? null : _delete,
+          ),
+        if (tx?.replacedByTransactionId != null)
+          OrderDetailFooterAction(
+            label: 'نمایش نسخه اصلاحی',
+            icon: Icons.link_rounded,
+            onPressed: () => _load(tx!.replacedByTransactionId!),
+          ),
+        if (tx?.replacesTransactionId != null)
+          OrderDetailFooterAction(
+            label: 'نمایش نسخه قبلی',
+            icon: Icons.history_rounded,
+            onPressed: () => _load(tx!.replacesTransactionId!),
           ),
         if (tx?.reversesTransactionId != null)
           OrderDetailFooterAction(
@@ -114,7 +112,7 @@ class _TransactionDetailDialogState extends State<TransactionDetailDialog> {
             icon: Icons.link_rounded,
             onPressed: () => _load(tx!.reversesTransactionId!),
           ),
-        if (tx?.reversedByTransactionId != null)
+        if (tx?.reversedByTransactionId != null && tx?.replacedByTransactionId == null)
           OrderDetailFooterAction(
             label: 'نمایش سند برگشت',
             icon: Icons.link_rounded,
@@ -201,10 +199,16 @@ class _TransactionDetailDialogState extends State<TransactionDetailDialog> {
         ),
         if (tx.status == TransactionStatus.reversed) ...[
           OrderDetailDialogStyle.sectionSpace,
-          const InfoBanner(
-            'این معامله برگشت شده و اثر مالی آن با سند برگشت خنثی شده است.',
+          InfoBanner(
+            tx.wasEdited
+                ? 'این معامله ویرایش شده است؛ اثر مالی آن خنثی و «نسخه اصلاحی» جایگزین آن شده است.'
+                : 'این معامله حذف شده و اثر مالی آن با سند برگشت خنثی شده است؛ فقط برای سابقه نمایش داده می‌شود.',
             tone: BannerTone.warning,
           ),
+        ],
+        if (tx.replacesTransactionId != null) ...[
+          OrderDetailDialogStyle.sectionSpace,
+          const InfoBanner('این نسخه اصلاح‌شده یک معامله ویرایش‌شده است.', tone: BannerTone.info),
         ],
       ],
     );

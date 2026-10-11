@@ -4,6 +4,7 @@ import '../../domain/accounting/account.dart';
 import '../../domain/money/currency.dart';
 import '../../domain/security/permissions.dart';
 import 'schema_v1.dart';
+import 'schema_v2.dart';
 
 /// A versioned schema migration applied inside a single transaction.
 final class SchemaMigration {
@@ -27,6 +28,11 @@ abstract final class ExchangeDatabase {
         await txn.execute(sql);
       }
       await _seed(txn);
+    }),
+    SchemaMigration(2, 'transaction_corrections', (txn) async {
+      for (final sql in schemaV2) {
+        await txn.execute(sql);
+      }
     }),
   ];
 

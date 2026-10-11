@@ -190,7 +190,7 @@ class GfFilterChip extends StatelessWidget {
         borderRadius: BorderRadius.circular(8),
         child: Container(
           alignment: expanded ? Alignment.center : null,
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          padding: EdgeInsets.symmetric(horizontal: expanded ? 10 : 14, vertical: 8),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(8),
             border: Border.all(
@@ -204,7 +204,20 @@ class GfFilterChip extends StatelessWidget {
                 Icon(icon, size: 16, color: fg),
                 const SizedBox(width: 6),
               ],
-              Text(label, style: AppTypography.label.copyWith(color: fg)),
+              Flexible(
+                child: expanded
+                    ? Text(
+                        label,
+                        style: AppTypography.label.copyWith(color: fg),
+                        textAlign: TextAlign.center,
+                      )
+                    : Text(
+                        label,
+                        style: AppTypography.label.copyWith(color: fg),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+              ),
             ],
           ),
         ),
@@ -247,24 +260,27 @@ class GfChoiceChips<T> extends StatelessWidget {
           onTap: onChanged == null ? null : () => onChanged!(o.value),
         );
     if (expand) {
-      return Row(
-        children: [
-          for (var i = 0; i < options.length; i++) ...[
-            if (i > 0) const SizedBox(width: 8),
-            Expanded(
-              child: SizedBox(
-                height: 40,
-                child: GfFilterChip(
-                  label: options[i].label,
-                  icon: options[i].icon,
-                  selected: options[i].value == value,
-                  expanded: true,
-                  onTap: onChanged == null ? null : () => onChanged!(options[i].value),
+      return IntrinsicHeight(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            for (var i = 0; i < options.length; i++) ...[
+              if (i > 0) const SizedBox(width: 8),
+              Expanded(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(minHeight: 40),
+                  child: GfFilterChip(
+                    label: options[i].label,
+                    icon: options[i].icon,
+                    selected: options[i].value == value,
+                    expanded: true,
+                    onTap: onChanged == null ? null : () => onChanged!(options[i].value),
+                  ),
                 ),
               ),
-            ),
+            ],
           ],
-        ],
+        ),
       );
     }
     return Wrap(

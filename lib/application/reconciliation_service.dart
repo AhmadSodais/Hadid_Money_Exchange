@@ -276,6 +276,87 @@ final class ReconciliationService {
     return (await byId(recordId))!;
   }
 
+  /// Removes a mistaken count of an open day (status `void`; the row is kept
+  /// for the audit trail). Not allowed after the day is closed or while a
+  /// posted adjustment depends on the count.
+  Future<void> voidCount(int recordId, String reason, Actor actor) async {
+    _require(actor, Permissions.reconciliationPerform);
+    if (reason.trim().isEmpty) {
+      throw const ValidationError('reason.required', 'ذکر دلیل حذف شمارش الزامی است.',
+          field: 'reason');
+    }
+    await _db.transaction((txn) async {
+      final rows = await txn.query('reconciliation_records', where: 'id = ?', whereArgs: [recordId]);
+      if (rows.isEmpty) throw const NotFoundError('reconciliation.notFound', 'رکورد پیدا نشد.');
+      final rec = ReconciliationRecord.fromRow(rows.first);
+      if (rec.status == 'closed') {
+        throw const BusinessRuleError('reconciliation.closed',
+            'بیلانس این روز بسته شده است؛ برای حذف شمارش ابتدا آن را باز کنید.');
+      }
+      if (rec.status == 'void') return;
+      final adjustmentId = rec.adjustmentTransactionId;
+      if (adjustmentId != null) {
+        final adj = await txn.query('transactions',
+            columns: ['status'], where: 'id = ?', whereArgs: [adjustmentId]);
+        if (adj.isNotEmpty && adj.first['status'] == 'posted') {
+          throw const BusinessRuleError('reconciliation.adjusted',
+              'برای این شمارش اصلاح صندوق ثبت شده است؛ ابتدا سند اصلاح را از روزنامچه حذف کنید.');
+        }
+      }
+      await txn.update('reconciliation_records', {'status': 'void'},
+          where: 'id = ?', whereArgs: [recordId]);
+      await AuditWriter.write(txn,
+          actor: actor,
+          action: 'reconciliation.void',
+          entityType: 'reconciliation',
+          entityId: '$recordId',
+          reason: reason.trim(),
+          before: {'status': rec.status, 'counted': rec.countedMinor},
+          after: {'status': 'void'});
+    });
+    _events.notify(LedgerChange.reconciliation);
+  }
+
+  /// Days in [from]..[to] on which an active transaction moved cash of a
+  /// currency in [drawerId] but no balance (count) was recorded for that
+  /// currency — e.g. a day the operator forgot. Newest first.
+  ///
+  /// Deleted/edited originals and their same-day reversals cancel out and do
+  /// not make a day "active"; a reversal dated on another day does.
+  Future<List<({BusinessDate date, String currency})>> missingCounts(
+    int drawerId, {
+    required BusinessDate from,
+    required BusinessDate to,
+  }) async {
+    final rows = await _db.rawQuery('''
+      SELECT l.effective_date AS d, l.currency_code AS cur
+      FROM journal_lines l
+      JOIN accounts a ON a.id = l.account_id
+      JOIN journal_entries e ON e.id = l.journal_entry_id
+      JOIN transactions t ON t.id = e.transaction_id
+      JOIN currencies c ON c.code = l.currency_code
+      WHERE a.role = 'cash' AND a.drawer_id = ? AND c.is_active = 1
+        AND l.effective_date BETWEEN ? AND ?
+        AND (
+          (t.status = 'posted' AND t.type <> 'reversal')
+          OR (t.status = 'reversed' AND t.effective_date <>
+                (SELECT r.effective_date FROM transactions r WHERE r.id = t.reversed_by_transaction_id))
+          OR (t.type = 'reversal' AND t.effective_date <>
+                (SELECT o.effective_date FROM transactions o WHERE o.id = t.reverses_transaction_id))
+        )
+        AND NOT EXISTS (
+          SELECT 1 FROM reconciliation_records rr
+          WHERE rr.drawer_id = a.drawer_id AND rr.currency_code = l.currency_code
+            AND rr.business_date = l.effective_date AND rr.status <> 'void')
+      GROUP BY l.effective_date, l.currency_code
+      ORDER BY l.effective_date DESC, MIN(c.sort_order)
+    ''', [drawerId, from.iso, to.iso]);
+    return [
+      for (final r in rows)
+        (date: BusinessDate.parse(r['d'] as String), currency: r['cur'] as String),
+    ];
+  }
+
   Future<ReconciliationRecord?> byId(int id) async {
     final rows = await _db.query('reconciliation_records', where: 'id = ?', whereArgs: [id]);
     return rows.isEmpty ? null : ReconciliationRecord.fromRow(rows.first);

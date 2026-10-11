@@ -14,6 +14,7 @@ final class JournalFilter {
     this.currency,
     this.types,
     this.status,
+    this.activeOnly = false,
     this.text,
     this.minAmountMinor,
     this.maxAmountMinor,
@@ -25,6 +26,10 @@ final class JournalFilter {
   final String? currency;
   final Set<TransactionType>? types;
   final TransactionStatus? status;
+
+  /// Only transactions that still affect balances: excludes deleted/edited
+  /// originals and the reversal documents that neutralized them.
+  final bool activeOnly;
 
   /// Matches reference number, description, or customer name.
   final String? text;
@@ -66,6 +71,9 @@ final class JournalFilter {
     if (status != null) {
       where.add('t.status = ?');
       args.add(status!.name);
+    }
+    if (activeOnly) {
+      where.add("t.status = 'posted' AND t.type <> 'reversal'");
     }
     final q = text?.trim();
     if (q != null && q.isNotEmpty) {
@@ -245,7 +253,8 @@ final class LedgerQueries {
     final (where, args) = filter.toSql();
     final order = newestFirst ? 'DESC' : 'ASC';
     final rows = await _db.rawQuery('''
-      SELECT t.*, c.name AS customer_name, u.display_name AS created_by_name
+      SELECT t.*, c.name AS customer_name, u.display_name AS created_by_name,
+        $kCorrectionLinkColumns
       FROM transactions t
       LEFT JOIN customers c ON c.id = t.customer_id
       LEFT JOIN users u ON u.id = t.created_by

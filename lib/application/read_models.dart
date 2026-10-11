@@ -35,9 +35,12 @@ final class PostedTransaction {
     this.destSettlement,
     this.feeCurrency,
     this.feeAmountMinor,
+    this.feeSettlement,
     this.signedAmountMinor,
     this.reversesTransactionId,
     this.reversedByTransactionId,
+    this.replacesTransactionId,
+    this.replacedByTransactionId,
     this.reason,
     this.lines = const [],
   });
@@ -67,9 +70,12 @@ final class PostedTransaction {
         destSettlement: r['dest_settlement'] as String?,
         feeCurrency: r['fee_currency'] as String?,
         feeAmountMinor: r['fee_amount_minor'] as int?,
+        feeSettlement: r['fee_settlement'] as String?,
         signedAmountMinor: r['signed_amount_minor'] as int?,
         reversesTransactionId: r['reverses_transaction_id'] as int?,
         reversedByTransactionId: r['reversed_by_transaction_id'] as int?,
+        replacesTransactionId: r['replaces_id'] as int?,
+        replacedByTransactionId: r['replaced_by_id'] as int?,
         reason: r['reason'] as String?,
         lines: lines,
       );
@@ -101,16 +107,37 @@ final class PostedTransaction {
   final String? destSettlement;
   final String? feeCurrency;
   final int? feeAmountMinor;
+  final String? feeSettlement;
 
   /// Signed amount for adjustments / customer opening balances.
   final int? signedAmountMinor;
   final int? reversesTransactionId;
   final int? reversedByTransactionId;
+
+  /// Set when this transaction is the corrected version of an edited one.
+  final int? replacesTransactionId;
+
+  /// Set when this transaction was edited; points to its corrected version.
+  final int? replacedByTransactionId;
   final String? reason;
   final List<JournalLineView> lines;
 
   bool get isExchange => type == TransactionType.buy || type == TransactionType.sell;
+
+  /// Still affects balances: posted and not itself a reversal document.
+  bool get isActive => status == TransactionStatus.posted && type != TransactionType.reversal;
+
+  /// Reversed as part of an edit (as opposed to a plain delete).
+  bool get wasEdited => status == TransactionStatus.reversed && replacedByTransactionId != null;
 }
+
+/// SQL selecting the correction links of `transactions t` as `replaces_id`
+/// and `replaced_by_id` (read by [PostedTransaction.fromRow]).
+const String kCorrectionLinkColumns = '''
+  (SELECT original_transaction_id FROM transaction_corrections
+     WHERE replacement_transaction_id = t.id) AS replaces_id,
+  (SELECT replacement_transaction_id FROM transaction_corrections
+     WHERE original_transaction_id = t.id) AS replaced_by_id''';
 
 final class JournalLineView {
   const JournalLineView({

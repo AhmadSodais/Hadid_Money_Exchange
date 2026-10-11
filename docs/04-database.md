@@ -75,7 +75,7 @@ erDiagram
 
 ## Migrations
 
-`ExchangeDatabase.latestVersion` is 1. A future change adds `schemaV2` statements and bumps `user_version` inside one transaction. Backups record the schema version, and a backup from a newer schema is refused on restore.
+`ExchangeDatabase.latestVersion` is 2. Version 2 (`schemaV2`) adds the append-only `transaction_corrections` table, which links an edited transaction to its reversal and its replacement. Each migration bumps `user_version` inside one transaction. Backups record the schema version, and a backup from a newer schema is refused on restore.
 
 ## Seed data
 

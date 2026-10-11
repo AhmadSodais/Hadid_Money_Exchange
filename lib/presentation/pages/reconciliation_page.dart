@@ -1,12 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../../application/read_models.dart';
 import '../../application/reconciliation_service.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_typography.dart';
-import '../../core/utils/formatters.dart';
 import '../../core/widgets/widgets.dart';
 import '../../domain/money/currency.dart';
 import '../../domain/security/permissions.dart';
@@ -15,6 +13,7 @@ import '../format/money_format.dart';
 import '../providers/app_settings_provider.dart';
 import '../session/app_session.dart';
 import '../widgets/app_shell.dart';
+import '../widgets/daily_balance_dialog.dart';
 import '../widgets/exchange_ui.dart';
 import '../widgets/settings_kit.dart';
 import '../widgets/workbench_kit.dart';
@@ -22,6 +21,9 @@ import '../widgets/workbench_kit.dart';
 /// اخذ بیلانس روزانه. Expected = opening + inflows − outflows (from the
 /// ledger); difference = counted − expected. A count never changes the
 /// ledger; a difference is corrected only by an authorized adjustment.
+///
+/// Balances are entered one currency at a time through [DailyBalanceDialog],
+/// for any past day, so a forgotten day can be recorded later.
 class ReconciliationPage extends StatefulWidget {
   const ReconciliationPage({super.key});
 
@@ -29,54 +31,47 @@ class ReconciliationPage extends StatefulWidget {
   State<ReconciliationPage> createState() => _ReconciliationPageState();
 }
 
+/// How far back the "days without a balance" list looks.
+const int _missingLookbackDays = 30;
+
 class _Row {
-  _Row(this.currency, this.snapshot, this.record);
+  _Row(this.currency, this.snapshot, this.record, {required this.adjustmentPosted});
 
   final Currency currency;
   final ReconciliationSnapshot snapshot;
   final ReconciliationRecord? record;
-  final TextEditingController counted = TextEditingController();
+
+  /// The count has a posted cash adjustment; recount/remove needs it deleted first.
+  final bool adjustmentPosted;
 
   bool get closed => record?.status == 'closed';
 
-  /// Counted after transactions were posted for the day: must be recounted.
+  /// Counted before more transactions were posted for the day: must be recounted.
   bool get stale {
     final rec = record;
-    return rec != null && !closed && rec.adjustmentTransactionId == null && rec.expectedMinor != snapshot.expectedMinor;
+    return rec != null && !closed && !adjustmentPosted && rec.expectedMinor != snapshot.expectedMinor;
   }
 
   bool get pendingDifference {
     final rec = record;
-    return rec != null && !closed && rec.differenceMinor != 0 && rec.adjustmentTransactionId == null;
-  }
-
-  int? get typedMinor {
-    if (counted.text.trim().isEmpty) return null;
-    final minor = MoneyFormat.tryParse(counted.text, currency);
-    return minor == null || minor < 0 ? null : minor;
-  }
-
-  /// The typed value is new or differs from the saved count.
-  bool get unsaved {
-    final typed = typedMinor;
-    return typed != null && typed != record?.countedMinor;
+    return rec != null && !closed && rec.differenceMinor != 0 && !adjustmentPosted;
   }
 }
 
-enum _Action { save, adjust, close, reopen }
+enum _Action { count, recount, edit, remove, adjust, close, reopen }
 
 class _ReconciliationPageState extends State<ReconciliationPage> with RevisionReload {
+  final _scroll = ScrollController();
   int? _drawerId;
   BusinessDate _date = BusinessDate.today();
   bool _loading = true;
   List<_Row> _rows = const [];
   List<ReconciliationRecord> _history = const [];
+  List<({BusinessDate date, String currency})> _missing = const [];
 
   @override
   void dispose() {
-    for (final r in _rows) {
-      r.counted.dispose();
-    }
+    _scroll.dispose();
     super.dispose();
   }
 
@@ -91,45 +86,67 @@ class _ReconciliationPageState extends State<ReconciliationPage> with RevisionRe
           : (drawers.isEmpty ? null : drawers.first.id);
     }();
     final drawer = _drawerId;
-    if (drawer == null) return;
+    if (drawer == null) {
+      if (mounted) setState(() => _loading = false);
+      return;
+    }
     final svc = s.services.reconciliation;
     final rows = <_Row>[];
     for (final c in s.activeCurrencies) {
       final snap = await svc.compute(drawer, c.code, _date);
       final rec = await svc.active(drawer, c.code, _date);
-      final row = _Row(c, snap, rec);
-      if (rec != null) row.counted.text = MoneyFormat.editable(rec.countedMinor, c);
-      rows.add(row);
+      var adjustmentPosted = false;
+      if (rec?.adjustmentTransactionId != null) {
+        final adj = await s.services.posting.transactionById(rec!.adjustmentTransactionId!);
+        adjustmentPosted = adj?.status == TransactionStatus.posted;
+      }
+      rows.add(_Row(c, snap, rec, adjustmentPosted: adjustmentPosted));
     }
     final history = await svc.records(drawerId: drawer);
+    final today = BusinessDate.today();
+    final missing = await svc.missingCounts(drawer, from: today.addDays(-_missingLookbackDays), to: today.addDays(-1));
     if (!mounted) return;
-    for (final r in _rows) {
-      r.counted.dispose();
-    }
     setState(() {
       _rows = rows;
       _history = history.take(60).toList();
+      _missing = missing;
       _loading = false;
     });
   }
 
-  Future<void> _saveCount(_Row r) async {
-    final minor = r.typedMinor;
-    if (minor == null) {
-      GfToast.error(context, 'مقدار شمارش‌شده معتبر نیست.');
+  void _goToDate(BusinessDate date) {
+    _date = date;
+    reload();
+    if (_scroll.hasClients) {
+      _scroll.animateTo(0, duration: const Duration(milliseconds: 250), curve: Curves.easeOut);
+    }
+  }
+
+  Future<void> _addBalance({Currency? currency, BusinessDate? date}) async {
+    final drawer = _drawerId;
+    if (drawer == null) {
+      GfToast.error(context, 'صندوق فعالی وجود ندارد.');
       return;
     }
+    final rec = await DailyBalanceDialog.show(context, drawerId: drawer, date: date ?? _date, currency: currency);
+    if (rec != null && mounted && rec.businessDate != _date) _goToDate(rec.businessDate);
+  }
+
+  Future<void> _remove(ReconciliationRecord rec, Currency c) async {
+    final reason = await askReason(
+      context,
+      title: 'حذف شمارش ${c.nameFa}',
+      message:
+          'شمارش ${MoneyFormat.withName(rec.countedMinor, c)} برای ${DateFormatFa.business(rec.businessDate)} '
+          'حذف می‌شود و می‌توانید دوباره ثبت کنید. موجودی دفتر تغییر نمی‌کند.',
+      confirmLabel: 'حذف شمارش',
+    );
+    if (reason == null || !mounted) return;
     final s = context.read<AppSession>();
     await runAction(
       context,
-      () => s.services.reconciliation.saveCount(
-        drawerId: _drawerId!,
-        currency: r.currency.code,
-        date: _date,
-        countedMinor: minor,
-        actor: s.actor,
-      ),
-      success: 'شمارش ${r.currency.nameFa} ثبت شد.',
+      () => s.services.reconciliation.voidCount(rec.id, reason, s.actor),
+      success: 'شمارش ${c.nameFa} حذف شد.',
     );
   }
 
@@ -137,39 +154,51 @@ class _ReconciliationPageState extends State<ReconciliationPage> with RevisionRe
     final reason = await askReason(
       context,
       title: 'اصلاح اختلاف ${c.nameFa}',
-      message: 'یک سند اصلاح صندوق به مبلغ ${MoneyFormat.withName(rec.differenceMinor, c)} '
+      message:
+          'یک سند اصلاح صندوق به مبلغ ${MoneyFormat.withName(rec.differenceMinor, c)} '
           '(${rec.differenceMinor > 0 ? 'اضافه' : 'کسری'}) با تاریخ ${DateFormatFa.business(rec.businessDate)} ثبت می‌شود.',
       confirmLabel: 'ثبت اصلاح',
     );
     if (reason == null || !mounted) return;
     final s = context.read<AppSession>();
-    await runAction(context, () => s.services.reconciliation.postAdjustment(rec.id, reason, s.actor),
-        success: 'اصلاح صندوق ثبت شد.');
+    await runAction(
+      context,
+      () => s.services.reconciliation.postAdjustment(rec.id, reason, s.actor),
+      success: 'اصلاح صندوق ثبت شد.',
+    );
   }
 
   Future<void> _close(ReconciliationRecord rec) async {
     final s = context.read<AppSession>();
-    await runAction(context, () => s.services.reconciliation.close(rec.id, s.actor),
-        success: 'بیلانس روز بسته شد؛ ثبت معامله با این تاریخ برای این ارز قفل است.');
+    await runAction(
+      context,
+      () => s.services.reconciliation.close(rec.id, s.actor),
+      success: 'بیلانس روز بسته شد؛ ثبت، ویرایش یا حذف معامله با این تاریخ برای این ارز قفل است.',
+    );
   }
 
   Future<void> _reopen(ReconciliationRecord rec) async {
     final reason = await askReason(
       context,
       title: 'بازگشایی روز بسته‌شده',
-      message: 'با بازگشایی، ثبت و برگشت معاملات این تاریخ دوباره ممکن می‌شود. دلیل در سوابق ممیزی ثبت می‌شود.',
+      message: 'با بازگشایی، ثبت، ویرایش و حذف معاملات این تاریخ دوباره ممکن می‌شود. دلیل در سوابق ممیزی ثبت می‌شود.',
       confirmLabel: 'بازگشایی',
     );
     if (reason == null || !mounted) return;
     final s = context.read<AppSession>();
-    await runAction(context, () => s.services.reconciliation.reopen(rec.id, reason, s.actor),
-        success: 'روز بازگشایی شد.');
+    await runAction(
+      context,
+      () => s.services.reconciliation.reopen(rec.id, reason, s.actor),
+      success: 'روز بازگشایی شد.',
+    );
   }
 
   void _run(_Action action, _Row r) {
     switch (action) {
-      case _Action.save:
-        _saveCount(r);
+      case _Action.count || _Action.recount || _Action.edit:
+        _addBalance(currency: r.currency);
+      case _Action.remove:
+        _remove(r.record!, r.currency);
       case _Action.adjust:
         _adjust(r.record!, r.currency);
       case _Action.close:
@@ -180,7 +209,7 @@ class _ReconciliationPageState extends State<ReconciliationPage> with RevisionRe
   }
 
   String _statusLabel(ReconciliationRecord? rec) {
-    if (rec == null) return 'شمارش نشده';
+    if (rec == null) return 'ثبت نشده';
     if (rec.status == 'closed') return 'بسته';
     if (rec.adjustmentTransactionId != null) return 'باز — اصلاح‌شده';
     return rec.differenceMinor == 0 ? 'باز — بدون اختلاف' : 'باز — دارای اختلاف';
@@ -206,8 +235,8 @@ class _ReconciliationPageState extends State<ReconciliationPage> with RevisionRe
     final steps = [
       _StepItem(
         step: 1,
-        title: 'شمارش نقد هر ارز',
-        detail: stale > 0 ? '$counted از $total ارز — $stale ارز نیاز به شمارش مجدد' : '$counted از $total ارز شمارش شده',
+        title: 'ثبت بیلانس هر ارز',
+        detail: stale > 0 ? '$counted از $total ارز — $stale ارز نیاز به شمارش مجدد' : '$counted از $total ارز ثبت شده',
         done: total > 0 && counted == total,
       ),
       _StepItem(
@@ -217,12 +246,7 @@ class _ReconciliationPageState extends State<ReconciliationPage> with RevisionRe
         done: total > 0 && counted == total && pending == 0,
         warning: pending > 0,
       ),
-      _StepItem(
-        step: 3,
-        title: 'بستن روز',
-        detail: '$closed از $total ارز بسته شده',
-        done: allClosed,
-      ),
+      _StepItem(step: 3, title: 'بستن روز', detail: '$closed از $total ارز بسته شده', done: allClosed),
     ];
 
     return SettingsSectionCard(
@@ -259,10 +283,7 @@ class _ReconciliationPageState extends State<ReconciliationPage> with RevisionRe
               ? Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    for (var i = 0; i < steps.length; i++) ...[
-                      if (i > 0) SizedBox(height: m.fieldGap),
-                      steps[i],
-                    ],
+                    for (var i = 0; i < steps.length; i++) ...[if (i > 0) SizedBox(height: m.fieldGap), steps[i]],
                   ],
                 )
               : Row(
@@ -281,7 +302,11 @@ class _ReconciliationPageState extends State<ReconciliationPage> with RevisionRe
           if (constraints.maxWidth < 1100) {
             return Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [pickers, SizedBox(height: m.gap), stepper],
+              children: [
+                pickers,
+                SizedBox(height: m.gap),
+                stepper,
+              ],
             );
           }
           return Row(
@@ -305,52 +330,75 @@ class _ReconciliationPageState extends State<ReconciliationPage> with RevisionRe
     return LedgerTable(
       shrinkWrap: true,
       showRowNumbers: false,
-      minWidth: 1080,
-      title: 'برگه شمارش صندوق — ${DateFormatFa.business(_date)}',
-      subtitle: 'مورد انتظار = مانده اول روز + ورودی − خروجی · اختلاف = شمارش − مورد انتظار. '
-          'مبلغ شمارش‌شده را وارد کنید؛ اختلاف همان لحظه محاسبه می‌شود.',
+      minWidth: 1050,
+      title: 'بیلانس ارزها — ${DateFormatFa.business(_date)}',
+      subtitle:
+          'هر ارز جداگانه ثبت می‌شود: روی «ثبت بیلانس» همان ارز بزنید و مبلغ شمارش‌شده را وارد کنید. '
+          'مورد انتظار = مانده اول روز + ورودی − خروجی؛ اختلاف = شمارش − مورد انتظار.',
       emptyText: 'ارز فعالی برای این صندوق وجود ندارد.',
       columns: const [
-        LedgerColumn('ارز', flex: 2),
+        LedgerColumn('ارز', width: 100),
         LedgerColumn('مانده اول روز', flex: 2, numeric: true),
-        LedgerColumn('ورودی', flex: 2, numeric: true),
-        LedgerColumn('خروجی', flex: 2, numeric: true),
+        LedgerColumn('گردش روز', flex: 2, numeric: true),
         LedgerColumn('مورد انتظار', flex: 2, numeric: true),
-        LedgerColumn('شمارش فزیکی', width: 176),
+        LedgerColumn('شمارش‌شده', flex: 2, numeric: true),
         LedgerColumn('اختلاف', flex: 2, numeric: true),
-        LedgerColumn('وضعیت', width: 150),
-        LedgerColumn('', width: 196),
+        LedgerColumn('وضعیت', width: 132),
+        LedgerColumn('', width: 270),
       ],
       rows: [for (final r in _rows) _sheetRow(r, canAdjust, canReopen)],
     );
+  }
+
+  Widget _movementLine(String sign, int minor, Currency c, Color color) {
+    return Text(
+      '$sign ${MoneyFormat.amount(minor, c)}',
+      textDirection: TextDirection.ltr,
+      style: AppTypography.caption.copyWith(
+        color: minor == 0 ? AppColors.textMuted : color,
+        fontWeight: FontWeight.w500,
+        fontFeatures: const [FontFeature.tabularFigures()],
+      ),
+    );
+  }
+
+  List<_Action> _actionsFor(_Row r, bool canAdjust, bool canReopen) {
+    final rec = r.record;
+    if (rec == null) return const [_Action.count];
+    if (r.closed) return [if (canReopen) _Action.reopen];
+    final editable = !r.adjustmentPosted;
+    if (r.stale) return [_Action.recount, if (editable) _Action.remove];
+    return [
+      if (r.pendingDifference && canAdjust) _Action.adjust,
+      _Action.close,
+      if (editable) _Action.edit,
+      if (editable) _Action.remove,
+    ];
   }
 
   List<Widget> _sheetRow(_Row r, bool canAdjust, bool canReopen) {
     final c = r.currency;
     final snap = r.snapshot;
     final rec = r.record;
-    final typed = r.typedMinor;
-    final diff = typed == null ? null : typed - snap.expectedMinor;
-
-    final actions = <_Action>[
-      if (!r.closed && (r.unsaved || r.stale || rec == null)) _Action.save,
-      if (r.pendingDifference && canAdjust && !r.unsaved) _Action.adjust,
-      if (rec != null && !r.closed && !r.stale && !r.unsaved) _Action.close,
-      if (r.closed && canReopen) _Action.reopen,
-    ];
+    final actions = _actionsFor(r, canAdjust, canReopen);
     final primary = actions.isEmpty ? null : actions.first;
     String label(_Action a) => switch (a) {
-          _Action.save => 'ثبت شمارش',
-          _Action.adjust => 'اصلاح اختلاف',
-          _Action.close => 'بستن روز',
-          _Action.reopen => 'بازگشایی',
-        };
+      _Action.count => 'ثبت بیلانس',
+      _Action.recount => 'شمارش مجدد',
+      _Action.edit => 'ویرایش شمارش',
+      _Action.remove => 'حذف شمارش',
+      _Action.adjust => 'اصلاح اختلاف',
+      _Action.close => 'بستن روز',
+      _Action.reopen => 'بازگشایی',
+    };
     IconData icon(_Action a) => switch (a) {
-          _Action.save => Icons.save_outlined,
-          _Action.adjust => Icons.tune,
-          _Action.close => Icons.lock_outline,
-          _Action.reopen => Icons.lock_open,
-        };
+      _Action.count => Icons.add_rounded,
+      _Action.recount || _Action.edit => Icons.edit_outlined,
+      _Action.remove => Icons.delete_outline_rounded,
+      _Action.adjust => Icons.tune,
+      _Action.close => Icons.lock_outline,
+      _Action.reopen => Icons.lock_open,
+    };
 
     return [
       Column(
@@ -362,62 +410,98 @@ class _ReconciliationPageState extends State<ReconciliationPage> with RevisionRe
         ],
       ),
       AmountText(snap.openingMinor, c),
-      AmountText(snap.inflowMinor, c),
-      AmountText(snap.outflowMinor, c),
+      Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          _movementLine('+', snap.inflowMinor, c, AppColors.success),
+          _movementLine('-', snap.outflowMinor, c, AppColors.error),
+        ],
+      ),
       AmountText(snap.expectedMinor, c, bold: true),
-      r.closed
-          ? AmountText(rec!.countedMinor, c, bold: true)
-          : SizedBox(
-              width: 160,
-              child: GfTextField(
-                controller: r.counted,
-                hint: '0',
-                textAlign: TextAlign.end,
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                inputFormatters: [
-                  FilteringTextInputFormatter.deny(RegExp('-')),
-                  const ThousandsSeparatorInputFormatter(),
-                ],
-                onChanged: (_) => setState(() {}),
-                onSubmitted: (_) => _saveCount(r),
-              ),
-            ),
-      diff == null
+      rec == null
           ? Text('—', style: AppTypography.body.copyWith(color: AppColors.textMuted))
-          : AmountText(diff, c, signColor: true, bold: true),
+          : AmountText(rec.countedMinor, c, bold: true),
+      rec == null
+          ? Text('—', style: AppTypography.body.copyWith(color: AppColors.textMuted))
+          : AmountText(rec.differenceMinor, c, signColor: true, bold: true),
       r.stale
           ? Tooltip(
-              message: 'پس از شمارش، معاملات جدید ثبت شده است؛ دوباره شمارش کنید.',
+              message: 'پس از ثبت بیلانس، معاملات این روز تغییر کرده است؛ دوباره شمارش کنید.',
               child: GfStatusBadge(label: 'شمارش مجدد', color: AppColors.warning, compact: true),
             )
           : GfStatusBadge(label: _statusLabel(rec), color: _statusColor(rec), compact: true),
-      Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (primary == null)
-            Text('—', style: AppTypography.body.copyWith(color: AppColors.textMuted))
-          else if (primary == _Action.reopen)
-            GfDangerButton(label: label(primary), icon: icon(primary), compact: true, onPressed: () => _run(primary, r))
-          else if (primary == _Action.save)
-            GfPrimaryButton(
-              label: label(primary),
-              icon: icon(primary),
-              compact: true,
-              onPressed: typed == null ? null : () => _run(primary, r),
-            )
-          else
-            GfSecondaryButton(label: label(primary), icon: icon(primary), compact: true, onPressed: () => _run(primary, r)),
-          if (actions.length > 1)
-            LedgerRowMenu(
-              onSelected: (v) => _run(_Action.values.byName(v), r),
-              items: [
-                for (final a in actions.skip(1))
-                  gfPopupMenuItem(value: a.name, label: label(a), danger: a == _Action.reopen),
-              ],
-            ),
-        ],
+      FittedBox(
+        fit: BoxFit.scaleDown,
+        alignment: AlignmentDirectional.centerStart,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (primary == null)
+              Text('—', style: AppTypography.body.copyWith(color: AppColors.textMuted))
+            else if (primary == _Action.reopen)
+              GfDangerButton(
+                label: label(primary),
+                icon: icon(primary),
+                compact: true,
+                onPressed: () => _run(primary, r),
+              )
+            else if (primary == _Action.count || primary == _Action.recount)
+              GfPrimaryButton(
+                label: label(primary),
+                icon: icon(primary),
+                compact: true,
+                onPressed: () => _run(primary, r),
+              )
+            else
+              GfSecondaryButton(
+                label: label(primary),
+                icon: icon(primary),
+                compact: true,
+                onPressed: () => _run(primary, r),
+              ),
+            if (actions.length > 1)
+              LedgerRowMenu(
+                onSelected: (v) => _run(_Action.values.byName(v), r),
+                items: [
+                  for (final a in actions.skip(1))
+                    gfPopupMenuItem(value: a.name, label: label(a), danger: a == _Action.remove || a == _Action.reopen),
+                ],
+              ),
+          ],
+        ),
       ),
     ];
+  }
+
+  // ---------------------------------------------------------- missing days
+
+  Widget _missingDays(AppSession s) {
+    return LedgerTable(
+      shrinkWrap: true,
+      fixedRows: 5,
+      showRowNumbers: false,
+      title: 'روزهای بدون بیلانس ($_missingLookbackDays روز اخیر)',
+      subtitle:
+          'در این روزها معامله نقدی ثبت شده اما بیلانس آن ارز ثبت نشده است. '
+          'بیلانس روز گذشته را هر وقت خواستید از همین‌جا ثبت کنید؛ روی ردیف بزنید تا آن روز باز شود.',
+      itemLabel: 'روز',
+      onTapRow: (i) => _goToDate(_missing[i].date),
+      columns: const [LedgerColumn('تاریخ', flex: 2), LedgerColumn('ارز', flex: 2), LedgerColumn('', width: 150)],
+      rows: [
+        for (final m in _missing)
+          [
+            Text(DateFormatFa.business(m.date), style: AppTypography.body),
+            Text(s.currency(m.currency)?.nameFa ?? m.currency, style: AppTypography.bodyMedium),
+            GfSecondaryButton(
+              label: 'ثبت بیلانس',
+              icon: Icons.add_rounded,
+              compact: true,
+              onPressed: () => _addBalance(currency: s.currency(m.currency), date: m.date),
+            ),
+          ],
+      ],
+    );
   }
 
   @override
@@ -425,28 +509,40 @@ class _ReconciliationPageState extends State<ReconciliationPage> with RevisionRe
     final s = context.watch<AppSession>();
     final canReopen = s.can(Permissions.reconciliationReopen);
     final canAdjust = s.can(Permissions.adjustmentsPost);
+    final canCount = s.can(Permissions.reconciliationPerform);
     return PageScaffold(
       title: 'بیلانس روزانه صندوق',
-      subtitle: 'شمارش نقد پایان روز، مقایسه با دفتر و بستن روز',
+      subtitle: 'ثبت شمارش نقد هر ارز، مقایسه با دفتر و بستن روز',
+      actions: [
+        if (canCount)
+          GfPrimaryButton(
+            label: 'افزودن بیلانس',
+            icon: Icons.add_rounded,
+            onPressed: _loading ? null : () => _addBalance(),
+          ),
+      ],
       body: _loading
           ? const GfPageLoader()
           : LayoutBuilder(
               builder: (context, constraints) {
                 final m = SettingsMetrics.of(constraints.maxWidth);
                 return ListView(
+                  controller: _scroll,
                   children: [
                     _header(m),
                     SizedBox(height: m.gap),
                     _countSheet(canAdjust, canReopen),
+                    if (_missing.isNotEmpty) ...[SizedBox(height: m.gap), _missingDays(s)],
                     SizedBox(height: m.gap),
                     SizedBox(
                       height: 460,
                       child: LedgerTable(
                         title: 'سابقه بیلانس‌ها',
-                        subtitle: 'آخرین ۶۰ شمارش این صندوق',
+                        subtitle: 'آخرین ۶۰ بیلانس این صندوق؛ برای باز کردن آن روز روی ردیف بزنید.',
                         minWidth: 860,
                         itemLabel: 'بیلانس',
                         emptyText: 'هنوز بیلانسی ثبت نشده است.',
+                        onTapRow: (i) => _goToDate(_history[i].businessDate),
                         columns: const [
                           LedgerColumn('تاریخ', width: 110),
                           LedgerColumn('ارز', width: 90),

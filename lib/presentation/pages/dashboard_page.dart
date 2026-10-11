@@ -185,6 +185,10 @@ class _CurrencyCard extends StatelessWidget {
   }
 }
 
+/// Rows per page of the dashboard tables; both share it so they stay the
+/// same height side by side.
+const int _dashboardTableRows = 5;
+
 class _TodayActivity extends StatelessWidget {
   const _TodayActivity({required this.rows, required this.session});
 
@@ -195,6 +199,8 @@ class _TodayActivity extends StatelessWidget {
   Widget build(BuildContext context) {
     return LedgerTable(
       shrinkWrap: true,
+      fixedRows: _dashboardTableRows,
+      itemLabel: 'مورد',
       title: 'فعالیت امروز',
       subtitle: 'معاملات ثبت‌شده به تفکیک نوع و ارز',
       actions: [
@@ -235,6 +241,8 @@ class _RatesPreview extends StatelessWidget {
   Widget build(BuildContext context) {
     return LedgerTable(
       shrinkWrap: true,
+      fixedRows: _dashboardTableRows,
+      itemLabel: 'نرخ',
       title: 'نرخ‌های جاری',
       subtitle: 'نرخ پیشنهادی فرم تبادله',
       actions: [

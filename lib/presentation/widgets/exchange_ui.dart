@@ -9,6 +9,7 @@ import '../../core/theme/app_radius.dart';
 import '../../core/theme/app_spacing.dart';
 import '../../core/theme/app_typography.dart';
 import '../../core/utils/formatters.dart';
+import '../../core/utils/gf_pagination.dart';
 import '../../core/widgets/widgets.dart';
 import '../../domain/errors/domain_errors.dart';
 import '../../domain/money/currency.dart';
@@ -119,7 +120,8 @@ class LedgerRowMenu extends StatelessWidget {
 ///
 /// Without [onPageChanged] the rows are paginated client-side. With
 /// [shrinkWrap] the table sizes to its rows (no pagination) for small
-/// embedded lists.
+/// embedded lists; adding [fixedRows] keeps it at a constant height of that
+/// many rows and paginates client-side instead.
 class LedgerTable extends StatelessWidget {
   const LedgerTable({
     super.key,
@@ -142,6 +144,7 @@ class LedgerTable extends StatelessWidget {
     this.onPageChanged,
     this.onPageSizeChanged,
     this.showRowNumbers = true,
+    this.fixedRows,
   });
 
   final List<LedgerColumn> columns;
@@ -163,6 +166,7 @@ class LedgerTable extends StatelessWidget {
   final ValueChanged<int>? onPageChanged;
   final ValueChanged<int>? onPageSizeChanged;
   final bool showRowNumbers;
+  final int? fixedRows;
 
   Widget _row(BuildContext context, int i) {
     final cells = rows[i];
@@ -189,6 +193,8 @@ class LedgerTable extends StatelessWidget {
         actions: actions,
         minWidth: minWidth,
         showRowNumbers: showRowNumbers,
+        fixedRows: fixedRows,
+        itemLabel: itemLabel,
       );
     }
     final server = onPageChanged != null;
@@ -216,18 +222,22 @@ class LedgerTable extends StatelessWidget {
   }
 }
 
-/// Non-paginated table with the same header/row styling as [GfDataTable].
-class _CompactLedgerTable extends StatelessWidget {
+/// Table with the same header/row styling as [GfDataTable] that sizes to its
+/// content. With [fixedRows] the body always reserves that many rows and the
+/// rows are paginated, so the card height does not depend on the data.
+class _CompactLedgerTable extends StatefulWidget {
   const _CompactLedgerTable({
     required this.columns,
     required this.rowCount,
     required this.rowBuilder,
     required this.empty,
     required this.showRowNumbers,
+    required this.itemLabel,
     this.title,
     this.subtitle,
     this.actions = const [],
     this.minWidth,
+    this.fixedRows,
   });
 
   final List<LedgerColumn> columns;
@@ -235,16 +245,25 @@ class _CompactLedgerTable extends StatelessWidget {
   final Widget Function(BuildContext, int) rowBuilder;
   final Widget empty;
   final bool showRowNumbers;
+  final String itemLabel;
   final String? title;
   final String? subtitle;
   final List<Widget> actions;
   final double? minWidth;
+  final int? fixedRows;
 
+  @override
+  State<_CompactLedgerTable> createState() => _CompactLedgerTableState();
+}
+
+class _CompactLedgerTableState extends State<_CompactLedgerTable> {
   static const double _numberWidth = 52;
 
+  int _page = 1;
+
   Widget _numbered(BuildContext context, int i) {
-    final row = rowBuilder(context, i) as GfTableRow;
-    if (!showRowNumbers) return row;
+    final row = widget.rowBuilder(context, i) as GfTableRow;
+    if (!widget.showRowNumbers) return row;
     return GfTableRow(
       onTap: row.onTap,
       children: [
@@ -287,6 +306,36 @@ class _CompactLedgerTable extends StatelessWidget {
       return c.width != null ? SizedBox(width: c.width, child: padded) : Expanded(flex: c.flex, child: padded);
     }
 
+    final fixedRows = widget.fixedRows;
+    final rowCount = widget.rowCount;
+    final pages = fixedRows == null ? 1 : GfPagination.totalPages(totalItems: rowCount, pageSize: fixedRows);
+    final page = GfPagination.clampPage(_page, pages);
+    final first = fixedRows == null ? 0 : (page - 1) * fixedRows;
+    final last = fixedRows == null ? rowCount : (first + fixedRows).clamp(0, rowCount);
+
+    Widget body;
+    if (fixedRows == null) {
+      body = rowCount == 0
+          ? Padding(padding: const EdgeInsets.all(24), child: widget.empty)
+          : Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [for (var i = 0; i < rowCount; i++) _numbered(context, i)],
+            );
+    } else {
+      // The empty state also takes the pagination footer's slot.
+      final rowsHeight = fixedRows * AppSpacing.tableRowHeight;
+      body = SizedBox(
+        height: rowCount == 0 ? rowsHeight + GfPagination.footerMinHeight : rowsHeight,
+        child: rowCount == 0
+            ? Center(child: widget.empty)
+            : Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [for (var i = first; i < last; i++) _numbered(context, i)],
+              ),
+      );
+    }
+
     final table = Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -297,23 +346,24 @@ class _CompactLedgerTable extends StatelessWidget {
           color: AppColors.tableHeader,
           child: Row(
             children: [
-              if (showRowNumbers)
+              if (widget.showRowNumbers)
                 SizedBox(
                   width: _numberWidth,
                   child: Text('#', textAlign: TextAlign.center, style: headerStyle),
                 ),
-              for (final c in columns) headerCell(c),
+              for (final c in widget.columns) headerCell(c),
             ],
           ),
         ),
         Divider(height: 1, color: AppColors.divider),
-        if (rowCount == 0)
-          Padding(padding: const EdgeInsets.all(24), child: empty)
-        else
-          for (var i = 0; i < rowCount; i++) _numbered(context, i),
+        body,
       ],
     );
 
+    final title = widget.title;
+    final subtitle = widget.subtitle;
+    final actions = widget.actions;
+    final minWidth = widget.minWidth;
     final hasChrome = title != null || actions.isNotEmpty;
     return GfCard(
       padding: EdgeInsets.zero,
@@ -331,10 +381,15 @@ class _CompactLedgerTable extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         if (title != null)
-                          Text(title!, style: AppTypography.sectionTitle, maxLines: 1, overflow: TextOverflow.ellipsis),
+                          Text(title, style: AppTypography.sectionTitle, maxLines: 1, overflow: TextOverflow.ellipsis),
                         if (subtitle != null) ...[
                           const SizedBox(height: 2),
-                          Text(subtitle!, style: AppTypography.caption.copyWith(color: AppColors.textSecondary)),
+                          Text(
+                            subtitle,
+                            style: AppTypography.caption.copyWith(color: AppColors.textSecondary),
+                            maxLines: fixedRows == null ? null : 1,
+                            overflow: fixedRows == null ? null : TextOverflow.ellipsis,
+                          ),
                         ],
                       ],
                     ),
@@ -344,12 +399,12 @@ class _CompactLedgerTable extends StatelessWidget {
               ),
             ),
           ClipRRect(
-            borderRadius: const BorderRadius.vertical(bottom: Radius.circular(8)),
+            borderRadius: BorderRadius.vertical(bottom: Radius.circular(fixedRows != null && rowCount > 0 ? 0 : 8)),
             child: minWidth == null
                 ? table
                 : LayoutBuilder(
                     builder: (context, c) {
-                      if (c.maxWidth >= minWidth!) return table;
+                      if (c.maxWidth >= minWidth) return table;
                       return SingleChildScrollView(
                         scrollDirection: Axis.horizontal,
                         child: SizedBox(width: minWidth, child: table),
@@ -357,6 +412,17 @@ class _CompactLedgerTable extends StatelessWidget {
                     },
                   ),
           ),
+          if (fixedRows != null && rowCount > 0)
+            ClipRRect(
+              borderRadius: const BorderRadius.vertical(bottom: Radius.circular(8)),
+              child: GfPaginationBar(
+                page: page,
+                pageSize: fixedRows,
+                totalItems: rowCount,
+                itemLabel: widget.itemLabel,
+                onPageChanged: (p) => setState(() => _page = p),
+              ),
+            ),
         ],
       ),
     );

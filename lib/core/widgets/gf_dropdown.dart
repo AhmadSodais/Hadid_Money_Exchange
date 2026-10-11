@@ -278,6 +278,12 @@ class _GfDropdownState<T> extends State<GfDropdown<T>>
 
   @override
   Widget build(BuildContext context) {
+    // Without an outer width the stretched column fills loose parents
+    // (Wrap, action bars) and [width] only applies to the menu.
+    return SizedBox(width: widget.width, child: _buildField(context));
+  }
+
+  Widget _buildField(BuildContext context) {
     return Focus(
       focusNode: _focusNode,
       onKeyEvent: _onKey,

@@ -1,9 +1,13 @@
+import 'dart:async';
+
 import 'package:easy_localization/easy_localization.dart' hide TextDirection;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:persian_datetime_picker/persian_datetime_picker.dart';
 import 'package:go_router/go_router.dart';
+import 'package:hadid_exchange/application/ledger_queries.dart';
 import 'package:hadid_exchange/application/security_service.dart';
+import 'package:hadid_exchange/core/widgets/gf_text_field.dart';
 import 'package:hadid_exchange/core/constants/app_routes.dart';
 import 'package:hadid_exchange/core/routing/app_router.dart';
 import 'package:hadid_exchange/core/snackbar/snackbar_viewmodel.dart';
@@ -24,7 +28,10 @@ import 'package:hadid_exchange/presentation/pages/settings_page.dart';
 import 'package:hadid_exchange/presentation/providers/app_lock_provider.dart';
 import 'package:hadid_exchange/presentation/providers/app_settings_provider.dart';
 import 'package:hadid_exchange/presentation/session/app_session.dart';
+import 'package:hadid_exchange/presentation/widgets/daily_balance_dialog.dart';
 import 'package:hadid_exchange/presentation/widgets/settings_kit.dart';
+import 'package:hadid_exchange/presentation/widgets/transaction_detail_dialog.dart';
+import 'package:hadid_exchange/presentation/widgets/transaction_edit_dialog.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -166,6 +173,42 @@ void main() {
           await settle(tester);
           expect(tester.takeException(), isNull, reason: 'report tab $i');
         }
+      }
+      if (route == AppRoutes.journal) {
+        final ctx = tester.element(find.byType(JournalPage));
+        final txs = (await tester.runAsync(
+            () => h.app.queries.journal(const JournalFilter(activeOnly: true))))!;
+        for (final t in txs.where((t) => t.type == TransactionType.receipt || t.isExchange)) {
+          unawaited(TransactionEditDialog.show(ctx, t));
+          await settle(tester);
+          expect(tester.takeException(), isNull, reason: 'edit dialog ${t.type.name}');
+          expect(find.text('ذخیره ویرایش'), findsOneWidget);
+          Navigator.of(tester.element(find.byType(TransactionEditDialog))).pop();
+          await settle(tester);
+        }
+        unawaited(TransactionDetailDialog.show(ctx, txs.first.id));
+        await settle(tester);
+        expect(tester.takeException(), isNull, reason: 'detail dialog');
+        expect(find.text('ویرایش'), findsWidgets);
+        Navigator.of(tester.element(find.byType(TransactionDetailDialog))).pop();
+        await settle(tester);
+      }
+      if (route == AppRoutes.reconciliation) {
+        await tester.tap(find.text('افزودن بیلانس'));
+        await settle(tester);
+        expect(tester.takeException(), isNull, reason: 'add balance dialog');
+        final dialog = find.byType(DailyBalanceDialog);
+        expect(dialog, findsOneWidget);
+        final amount = find.byWidgetPredicate(
+            (w) => w is GfTextField && (w.label ?? '').startsWith('مبلغ شمارش‌شده'));
+        await tester.enterText(find.descendant(of: amount, matching: find.byType(TextField)), '1000');
+        await settle(tester);
+        await tester.tap(find.descendant(of: dialog, matching: find.text('ثبت بیلانس')).last);
+        await settle(tester);
+        expect(tester.takeException(), isNull, reason: 'saving a balance');
+        expect(dialog, findsNothing);
+        final saved = (await tester.runAsync(() => h.app.reconciliation.records()))!;
+        expect(saved, hasLength(1));
       }
       if (route == AppRoutes.settings) {
         final tiles = find.byType(SettingsNavTile);

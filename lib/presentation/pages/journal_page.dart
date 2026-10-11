@@ -17,11 +17,13 @@ import '../session/app_session.dart';
 import '../widgets/app_shell.dart';
 import '../widgets/exchange_ui.dart';
 import '../widgets/export_action.dart';
+import '../widgets/transaction_actions.dart';
 import '../widgets/transaction_detail_dialog.dart';
 
 /// روزنامچه: every transaction of every type in one place. Filters combine
-/// (AND); none overrides another. Records are read-only here — corrections
-/// are made by reversal from the detail dialog.
+/// (AND); none overrides another. Edit and delete never change a posted row:
+/// both go through [TransactionActions] (reversal on the original date, plus
+/// the corrected version for an edit), so every balance stays consistent.
 class JournalPage extends StatefulWidget {
   const JournalPage({super.key});
 
@@ -29,11 +31,23 @@ class JournalPage extends StatefulWidget {
   State<JournalPage> createState() => _JournalPageState();
 }
 
+enum _View {
+  active('معاملات فعال'),
+  removed('حذف یا ویرایش‌شده'),
+  all('همه (با اسناد برگشت)');
+
+  const _View(this.label);
+
+  final String label;
+}
+
+enum _RowAction { details, edit, delete }
+
 class _JournalPageState extends State<JournalPage> with RevisionReload {
   final _search = TextEditingController();
   DateFilterValue _dateFilter = DateFilterValue.thisMonth();
   _TypeFilter _typeFilter = _TypeFilter.all;
-  TransactionStatus? _status;
+  _View _view = _View.active;
   Currency? _currency;
   int _page = 1;
   int _pageSize = 20;
@@ -51,7 +65,8 @@ class _JournalPageState extends State<JournalPage> with RevisionReload {
         from: BusinessDate.fromDateTime(_dateFilter.from),
         to: BusinessDate.fromDateTime(_dateFilter.to),
         types: _typeFilter.types,
-        status: _status,
+        status: _view == _View.removed ? TransactionStatus.reversed : null,
+        activeOnly: _view == _View.active,
         currency: _currency?.code,
         text: _search.text,
       );
@@ -75,6 +90,30 @@ class _JournalPageState extends State<JournalPage> with RevisionReload {
   void _refilter() {
     _page = 1;
     reload();
+  }
+
+  Future<void> _runRow(_RowAction action, PostedTransaction t) async {
+    switch (action) {
+      case _RowAction.details:
+        await TransactionDetailDialog.show(context, t.id);
+      case _RowAction.edit:
+        await TransactionActions.edit(context, t);
+      case _RowAction.delete:
+        await TransactionActions.delete(context, t);
+    }
+  }
+
+  Widget _rowMenu(PostedTransaction t, AppSession s) {
+    final canEdit = TransactionActions.canEdit(t, s);
+    final canDelete = TransactionActions.canDelete(t, s);
+    return LedgerRowMenu(
+      onSelected: (v) => _runRow(_RowAction.values.byName(v), t),
+      items: [
+        gfPopupMenuItem(value: _RowAction.details.name, label: 'جزئیات'),
+        if (canEdit) gfPopupMenuItem(value: _RowAction.edit.name, label: 'ویرایش'),
+        if (canDelete) gfPopupMenuItem(value: _RowAction.delete.name, label: 'حذف', danger: true),
+      ],
+    );
   }
 
   String _details(PostedTransaction t, AppSession s) {
@@ -119,7 +158,7 @@ class _JournalPageState extends State<JournalPage> with RevisionReload {
                   ? ''
                   : '${MoneyFormat.amount(t.feeAmountMinor!, s.currency(t.feeCurrency))} ${t.feeCurrency}',
               t.description ?? '',
-              t.status == TransactionStatus.reversed ? 'برگشت‌شده' : 'ثبت‌شده',
+              TransactionActions.statusLabel(t),
               t.createdByName ?? '',
             ],
         ],
@@ -132,7 +171,7 @@ class _JournalPageState extends State<JournalPage> with RevisionReload {
     final s = context.watch<AppSession>();
     return PageScaffold(
       title: 'روزنامچه معاملات',
-      subtitle: 'همه معاملات؛ اصلاح فقط با برگشت کامل (بدون ویرایش یا حذف)',
+      subtitle: 'همه معاملات؛ ویرایش و حذف از منوی هر ردیف — موجودی‌ها خودکار اصلاح و سابقه حفظ می‌شود',
       searchController: _search,
       searchHint: 'شماره سند، شرح یا نام مشتری',
       onSearch: (_) => _refilter(),
@@ -180,26 +219,22 @@ class _JournalPageState extends State<JournalPage> with RevisionReload {
           Expanded(
             child: LedgerTable(
               title: 'معاملات ثبت‌شده',
-              subtitle: 'برای دیدن جزئیات و برگشت، روی ردیف کلیک کنید.',
+              subtitle: 'برای جزئیات روی ردیف کلیک کنید؛ ویرایش و حذف از منوی ⋮ انتهای ردیف.',
               isLoading: _loading,
               minWidth: 1050,
               itemLabel: 'معامله',
               emptyText: 'معامله‌ای یافت نشد.',
               emptyHint: 'بازه تاریخ یا فیلترها را تغییر دهید.',
               actions: [
-                GfDropdown<TransactionStatus?>(
-                  width: 150,
-                  hint: 'همه وضعیت‌ها',
+                GfDropdown<_View>(
+                  width: 210,
                   prefixIcon: Icons.flag_outlined,
-                  items: const [null, TransactionStatus.posted, TransactionStatus.reversed],
-                  value: _status,
-                  labelBuilder: (t) => switch (t) {
-                    null => 'همه وضعیت‌ها',
-                    TransactionStatus.posted => 'ثبت‌شده',
-                    TransactionStatus.reversed => 'برگشت‌شده',
-                  },
-                  onChanged: (t) {
-                    _status = t;
+                  items: _View.values,
+                  value: _view,
+                  labelBuilder: (v) => v.label,
+                  onChanged: (v) {
+                    if (v == null) return;
+                    _view = v;
                     _refilter();
                   },
                 ),
@@ -222,7 +257,8 @@ class _JournalPageState extends State<JournalPage> with RevisionReload {
                 LedgerColumn('نوع', width: 120),
                 LedgerColumn('مشتری', flex: 2),
                 LedgerColumn('جزئیات', flex: 4),
-                LedgerColumn('وضعیت', width: 95),
+                LedgerColumn('وضعیت', width: 105),
+                LedgerColumn('', width: LedgerRowMenu.width),
               ],
               rows: [
                 for (final t in _rows)
@@ -231,14 +267,21 @@ class _JournalPageState extends State<JournalPage> with RevisionReload {
                     Text(t.referenceNo, style: AppTypography.caption, textDirection: TextDirection.ltr),
                     Text(t.type.labelFa, style: AppTypography.bodyMedium),
                     Text(t.customerName ?? '—', style: AppTypography.body),
-                    Text(_details(t, s), style: AppTypography.body),
                     Text(
-                      t.status == TransactionStatus.reversed ? 'برگشت‌شده' : 'ثبت‌شده',
+                      _details(t, s),
+                      style: AppTypography.body.copyWith(
+                        color: t.isActive ? null : AppColors.textMuted,
+                        decoration: t.status == TransactionStatus.reversed ? TextDecoration.lineThrough : null,
+                      ),
+                    ),
+                    Text(
+                      TransactionActions.statusLabel(t),
                       style: AppTypography.caption.copyWith(
-                        color: t.status == TransactionStatus.reversed ? AppColors.warning : AppColors.success,
+                        color: TransactionActions.statusColor(t),
                         fontWeight: FontWeight.w600,
                       ),
                     ),
+                    _rowMenu(t, s),
                   ],
               ],
               total: _total,

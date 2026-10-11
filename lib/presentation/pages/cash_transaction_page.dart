@@ -132,7 +132,7 @@ class _CashTransactionPageState extends State<CashTransactionPage> with Revision
       context,
       title: 'تأیید $_title',
       message: '$what\nتاریخ: ${DateFormatFa.business(_date)}\n'
-          'پس از ثبت، اصلاح فقط با برگشت کامل ممکن است.',
+          'پس از ثبت، از روزنامچه قابل ویرایش یا حذف است.',
       confirmLabel: 'ثبت نهایی',
       cancelLabel: 'انصراف',
     );
@@ -209,21 +209,19 @@ class _CashTransactionPageState extends State<CashTransactionPage> with Revision
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          DialogResponsiveRow(
+          WorkbenchPartyFields(
             gap: m.fieldGap,
-            breakpoint: 640,
-            children: [
-              if (_needsCustomer)
-                CustomerPickerField(
-                  selected: _customer,
-                  onSelected: (c) {
-                    setState(() => _customer = c);
-                    reload();
-                  },
-                ),
-              drawer,
-              date,
-            ],
+            customer: _needsCustomer
+                ? CustomerPickerField(
+                    selected: _customer,
+                    onSelected: (c) {
+                      setState(() => _customer = c);
+                      reload();
+                    },
+                  )
+                : null,
+            drawer: drawer,
+            date: date,
           ),
           if (_needsCustomer && _customer != null) ...[
             SizedBox(height: m.fieldGap),
@@ -297,6 +295,7 @@ class _CashTransactionPageState extends State<CashTransactionPage> with Revision
         (_kind != _CashKind.expense || _description.text.trim().isNotEmpty);
 
     final children = <Widget>[];
+    final placeholder = currency == null || minor == null || (_needsCustomer && _customer == null);
     if (currency == null || minor == null || (_needsCustomer && _customer == null)) {
       children.add(WorkbenchHint(
         icon: Icons.receipt_long_outlined,
@@ -372,6 +371,8 @@ class _CashTransactionPageState extends State<CashTransactionPage> with Revision
         _CashKind.payment => AppColors.info,
         _CashKind.expense => AppColors.warning,
       },
+      height: 600,
+      centerChildren: placeholder,
       footer: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -384,7 +385,7 @@ class _CashTransactionPageState extends State<CashTransactionPage> with Revision
           ),
           const SizedBox(height: 8),
           Text(
-            'پس از ثبت، اصلاح فقط با برگشت کامل ممکن است.',
+            'پس از ثبت، از روزنامچه قابل ویرایش یا حذف است.',
             textAlign: TextAlign.center,
             style: AppTypography.caption.copyWith(color: AppColors.textMuted),
           ),

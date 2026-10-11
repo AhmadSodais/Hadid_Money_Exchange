@@ -14,12 +14,16 @@ class WorkbenchLayout extends StatelessWidget {
     required this.main,
     required this.side,
     this.sideWidth = 380,
-    this.breakpoint = 1040,
+    this.compactSideWidth = 330,
+    this.breakpoint = 900,
   });
 
   final List<Widget> Function(SettingsMetrics metrics) main;
   final List<Widget> Function(SettingsMetrics metrics) side;
   final double sideWidth;
+
+  /// Panel width used while the screen is narrower than 1280.
+  final double compactSideWidth;
   final double breakpoint;
 
   @override
@@ -41,7 +45,10 @@ class WorkbenchLayout extends StatelessWidget {
           children: [
             Expanded(child: ListView(children: spaced(main(m)))),
             SizedBox(width: m.gap),
-            SizedBox(width: sideWidth, child: ListView(children: spaced(side(m)))),
+            SizedBox(
+              width: constraints.maxWidth < 1280 ? compactSideWidth : sideWidth,
+              child: ListView(children: spaced(side(m))),
+            ),
           ],
         );
       },
@@ -167,7 +174,7 @@ class _ModeTile<T> extends StatelessWidget {
                     Text(
                       option.description,
                       style: AppTypography.caption.copyWith(color: AppColors.textSecondary),
-                      maxLines: 2,
+                      maxLines: 3,
                       overflow: TextOverflow.ellipsis,
                     ),
                   ],
@@ -177,6 +184,68 @@ class _ModeTile<T> extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Customer / drawer / date fields: one row when wide, customer on its own
+/// row above drawer and date when medium, fully stacked when narrow.
+class WorkbenchPartyFields extends StatelessWidget {
+  const WorkbenchPartyFields({
+    super.key,
+    this.customer,
+    required this.drawer,
+    required this.date,
+    this.gap = 16,
+  });
+
+  final Widget? customer;
+  final Widget drawer;
+  final Widget date;
+  final double gap;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final w = constraints.maxWidth;
+        Widget pair() => Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(child: drawer),
+                SizedBox(width: gap),
+                Expanded(child: date),
+              ],
+            );
+        if (w < 400) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (customer != null) ...[customer!, SizedBox(height: gap)],
+              drawer,
+              SizedBox(height: gap),
+              date,
+            ],
+          );
+        }
+        if (customer == null) return pair();
+        if (w < 760) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [customer!, SizedBox(height: gap), pair()],
+          );
+        }
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(flex: 3, child: customer!),
+            SizedBox(width: gap),
+            Expanded(flex: 2, child: drawer),
+            SizedBox(width: gap),
+            Expanded(flex: 2, child: date),
+          ],
+        );
+      },
     );
   }
 }
@@ -269,6 +338,10 @@ class WorkbenchStepBadge extends StatelessWidget {
 }
 
 /// End-side panel: tinted header, body, and a footer for the main action.
+///
+/// With [height] the panel keeps that size whatever its content: the body
+/// scrolls when it overflows and [centerChildren] centers a short body (e.g.
+/// a placeholder hint).
 class WorkbenchSummaryPanel extends StatelessWidget {
   const WorkbenchSummaryPanel({
     super.key,
@@ -278,6 +351,8 @@ class WorkbenchSummaryPanel extends StatelessWidget {
     this.subtitle,
     this.accent,
     this.footer,
+    this.height,
+    this.centerChildren = false,
   });
 
   final IconData icon;
@@ -286,11 +361,43 @@ class WorkbenchSummaryPanel extends StatelessWidget {
   final Color? accent;
   final List<Widget> children;
   final Widget? footer;
+  final double? height;
+  final bool centerChildren;
 
   @override
   Widget build(BuildContext context) {
     final color = accent ?? AppColors.primary;
+    const bodyPadding = 16.0;
+    final items = [
+      for (var i = 0; i < children.length; i++) ...[
+        if (i > 0) const SizedBox(height: 14),
+        children[i],
+      ],
+    ];
+    final Widget body = height == null
+        ? Padding(
+            padding: const EdgeInsets.all(bodyPadding),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: items),
+          )
+        : Expanded(
+            child: LayoutBuilder(
+              builder: (context, constraints) => SingleChildScrollView(
+                padding: const EdgeInsets.all(bodyPadding),
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(
+                    minHeight: (constraints.maxHeight - bodyPadding * 2).clamp(0, double.infinity),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    mainAxisAlignment: centerChildren ? MainAxisAlignment.center : MainAxisAlignment.start,
+                    children: items,
+                  ),
+                ),
+              ),
+            ),
+          );
     return Container(
+      height: height,
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
         color: AppColors.card,
@@ -333,18 +440,7 @@ class WorkbenchSummaryPanel extends StatelessWidget {
               ],
             ),
           ),
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                for (var i = 0; i < children.length; i++) ...[
-                  if (i > 0) const SizedBox(height: 14),
-                  children[i],
-                ],
-              ],
-            ),
-          ),
+          body,
           if (footer != null)
             Container(
               padding: const EdgeInsets.all(16),

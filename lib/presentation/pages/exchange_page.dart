@@ -338,7 +338,7 @@ class _ExchangePageState extends State<ExchangePage> with RevisionReload {
             ),
             const SizedBox(height: 14),
             const DialogInfoBanner(
-              message: 'پس از ثبت، معامله قابل ویرایش یا حذف نیست؛ اصلاح فقط با برگشت کامل انجام می‌شود.',
+              message: 'در صورت اشتباه، معامله را بعداً از روزنامچه ویرایش یا حذف کنید؛ موجودی‌ها خودکار اصلاح می‌شوند.',
             ),
           ],
         ),
@@ -347,41 +347,6 @@ class _ExchangePageState extends State<ExchangePage> with RevisionReload {
   }
 
   // ------------------------------------------------------------------ form
-
-  Widget _settlementSelector({
-    required String label,
-    required Settlement value,
-    required ValueChanged<Settlement> onChanged,
-    required bool receiving,
-  }) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text(label, style: AppTypography.label),
-        const SizedBox(height: AppSpacing.xs),
-        GfChoiceChips<Settlement>(
-          expand: true,
-          value: value,
-          onChanged: (v) {
-            if (v == Settlement.customer && _isWalkIn) {
-              GfToast.warning(context, 'برای مشتری متفرقه فقط تسویه نقدی ممکن است.');
-              return;
-            }
-            onChanged(v);
-          },
-          options: [
-            GfChoiceOption(Settlement.cash, receiving ? 'نقد دریافت' : 'نقد پرداخت', icon: Icons.payments_outlined),
-            GfChoiceOption(
-              Settlement.customer,
-              receiving ? 'از حساب مشتری' : 'به حساب مشتری',
-              icon: Icons.account_balance_wallet_outlined,
-            ),
-          ],
-        ),
-      ],
-    );
-  }
 
   Widget _partySection(SettingsMetrics m, AppSession s) {
     return WorkbenchSection(
@@ -392,21 +357,18 @@ class _ExchangePageState extends State<ExchangePage> with RevisionReload {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          DialogResponsiveRow(
+          WorkbenchPartyFields(
             gap: m.fieldGap,
-            breakpoint: 640,
-            children: [
-              CustomerPickerField(selected: _customer, allowWalkIn: true, onSelected: _onCustomer),
-              DrawerPicker(
-                value: _drawerId,
-                onChanged: (id) {
-                  setState(() => _drawerId = id);
-                  context.read<AppSettingsProvider>().setSelectedDrawerId(id);
-                  reload();
-                },
-              ),
-              BusinessDateField(value: _date, onChanged: (d) => setState(() => _date = d)),
-            ],
+            customer: CustomerPickerField(selected: _customer, allowWalkIn: true, onSelected: _onCustomer),
+            drawer: DrawerPicker(
+              value: _drawerId,
+              onChanged: (id) {
+                setState(() => _drawerId = id);
+                context.read<AppSettingsProvider>().setSelectedDrawerId(id);
+                reload();
+              },
+            ),
+            date: BusinessDateField(value: _date, onChanged: (d) => setState(() => _date = d)),
           ),
           if (!_isWalkIn) ...[
             SizedBox(height: m.fieldGap),
@@ -504,6 +466,12 @@ class _ExchangePageState extends State<ExchangePage> with RevisionReload {
           ),
       ],
     );
+    final description = GfTextField(
+      label: 'شرح (اختیاری)',
+      controller: _description,
+      maxLines: 2,
+      minLines: 1,
+    );
 
     return WorkbenchSection(
       step: 2,
@@ -513,7 +481,7 @@ class _ExchangePageState extends State<ExchangePage> with RevisionReload {
       child: LayoutBuilder(
         builder: (context, constraints) {
           final gap = m.fieldGap;
-          if (constraints.maxWidth < 720) {
+          if (constraints.maxWidth < 520) {
             return Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -528,10 +496,12 @@ class _ExchangePageState extends State<ExchangePage> with RevisionReload {
                 quotePicker,
                 SizedBox(height: gap),
                 result,
+                SizedBox(height: gap),
+                description,
               ],
             );
           }
-          const middle = 200.0;
+          final middle = constraints.maxWidth < 720 ? 140.0 : 200.0;
           return Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
@@ -558,71 +528,11 @@ class _ExchangePageState extends State<ExchangePage> with RevisionReload {
               ),
               const SizedBox(height: 8),
               rateHint,
+              SizedBox(height: gap),
+              description,
             ],
           );
         },
-      ),
-    );
-  }
-
-  Widget _settlementSection(SettingsMetrics m, bool buy) {
-    final base = _base, quote = _quote;
-    return WorkbenchSection(
-      step: 3,
-      title: 'تسویه و کمیشن',
-      subtitle: _isWalkIn
-          ? 'مشتری متفرقه فقط نقدی تسویه می‌کند.'
-          : 'هر طرف معامله نقدی از صندوق یا از طریق حساب مشتری تسویه می‌شود.',
-      padding: m.cardPadding,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          SettingsFormRow(
-            gap: m.fieldGap,
-            left: _settlementSelector(
-              label: '${base?.nameFa ?? 'ارز مبدأ'}: ${buy ? 'دریافت از مشتری' : 'پرداخت به مشتری'}',
-              value: _baseSettlement,
-              receiving: buy,
-              onChanged: (v) => setState(() => _baseSettlement = v),
-            ),
-            right: _settlementSelector(
-              label: '${quote?.nameFa ?? 'ارز مقابل'}: ${buy ? 'پرداخت به مشتری' : 'دریافت از مشتری'}',
-              value: _quoteSettlement,
-              receiving: !buy,
-              onChanged: (v) => setState(() => _quoteSettlement = v),
-            ),
-          ),
-          SizedBox(height: m.fieldGap),
-          GfToggleCard(
-            label: 'کمیشن جداگانه دریافت شود',
-            subtitle: 'کمیشن به‌عنوان عاید جداگانه در همان سند ثبت می‌شود.',
-            value: _feeEnabled,
-            onChanged: (v) => setState(() => _feeEnabled = v),
-          ),
-          if (_feeEnabled) ...[
-            SizedBox(height: m.fieldGap),
-            DialogResponsiveRow(
-              gap: m.fieldGap,
-              breakpoint: 640,
-              children: [
-                CurrencyPicker(
-                  label: 'ارز کمیشن',
-                  value: _feeCurrency,
-                  onChanged: (c) => setState(() => _feeCurrency = c),
-                ),
-                AmountField(controller: _fee, label: 'مبلغ کمیشن', onChanged: (_) => setState(() {})),
-                _settlementSelector(
-                  label: 'دریافت کمیشن',
-                  value: _feeSettlement,
-                  receiving: true,
-                  onChanged: (v) => setState(() => _feeSettlement = v),
-                ),
-              ],
-            ),
-          ],
-          SizedBox(height: m.fieldGap),
-          GfTextField(label: 'شرح (اختیاری)', controller: _description, maxLines: 2, minLines: 1),
-        ],
       ),
     );
   }
@@ -734,6 +644,8 @@ class _ExchangePageState extends State<ExchangePage> with RevisionReload {
       title: buy ? 'خلاصه خرید ارز' : 'خلاصه فروش ارز',
       subtitle: _isWalkIn ? 'مشتری متفرقه — تسویه نقدی' : _customer?.name,
       accent: buy ? AppColors.success : AppColors.info,
+      height: 640,
+      centerChildren: !ready,
       footer: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -746,7 +658,7 @@ class _ExchangePageState extends State<ExchangePage> with RevisionReload {
           ),
           const SizedBox(height: 8),
           Text(
-            'پس از ثبت، اصلاح فقط با برگشت کامل معامله ممکن است.',
+            'پس از ثبت، از روزنامچه قابل ویرایش یا حذف است.',
             textAlign: TextAlign.center,
             style: AppTypography.caption.copyWith(color: AppColors.textMuted),
           ),
@@ -819,7 +731,6 @@ class _ExchangePageState extends State<ExchangePage> with RevisionReload {
           ),
           _partySection(m, s),
           _amountSection(m, p, buy),
-          _settlementSection(m, buy),
         ],
         side: (m) => [
           _summary(s, p, buy),

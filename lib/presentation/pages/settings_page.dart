@@ -63,7 +63,7 @@ class _SettingsPageState extends State<SettingsPage> {
     SettingsNavEntry(_Section.backup, Icons.folder_outlined, 'پشتیبان‌گیری و بازیابی'),
     SettingsNavEntry(_Section.legacyImport, Icons.move_down, 'انتقال از برنامه قبلی'),
     SettingsNavEntry(_Section.audit, Icons.fact_check_outlined, 'سوابق ممیزی و صحت دفاتر'),
-    SettingsNavEntry(_Section.appearance, Icons.palette_outlined, 'ظاهر و تقویم'),
+    SettingsNavEntry(_Section.appearance, Icons.palette_outlined, 'ظاهر'),
     SettingsNavEntry(_Section.about, Icons.info_outline, 'درباره و مجوز'),
   ];
 
@@ -1241,7 +1241,7 @@ class _AppearanceCard extends StatelessWidget {
     final app = context.watch<AppSettingsProvider>();
     return SettingsSectionCard(
       icon: Icons.palette_outlined,
-      title: 'ظاهر و تقویم',
+      title: 'ظاهر',
       padding: metrics.cardPadding,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
