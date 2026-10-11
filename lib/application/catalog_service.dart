@@ -108,6 +108,96 @@ final class CatalogService {
     ];
   }
 
+  /// Adds a cash drawer together with its cash account under 1100.
+  Future<CashDrawer> addDrawer(String name, Actor actor) async {
+    _require(actor, Permissions.settingsManage);
+    final clean = name.trim();
+    if (clean.isEmpty) throw const ValidationError('drawer.name', 'نام صندوق الزامی است.');
+    final now = DateTime.now().toUtc().toIso8601String();
+    late CashDrawer drawer;
+    await _db.transaction((txn) async {
+      await _requireUniqueDrawerName(txn, clean);
+      final next = (await txn.rawQuery('SELECT COALESCE(MAX(id), 0) + 1 AS n FROM cash_drawers')).first['n'] as int;
+      final code = 'DRAWER-${next.toString().padLeft(2, '0')}';
+      await txn.insert('cash_drawers', {
+        'id': next,
+        'code': code,
+        'name_fa': clean,
+        'is_active': 1,
+        'created_at': now,
+      });
+      final parent = await txn.query('accounts', columns: ['id'], where: "code = '1100'", limit: 1);
+      await txn.insert('accounts', {
+        'code': next < 100 ? '${1100 + next}' : '1100-$next',
+        'name_fa': clean,
+        'type': 'asset',
+        'normal_side': 'debit',
+        'role': 'cash',
+        'parent_id': parent.first['id'],
+        'drawer_id': next,
+        'is_active': 1,
+        'is_system': 0,
+        'created_at': now,
+      });
+      await AuditWriter.write(txn,
+          actor: actor, action: 'drawer.add', entityType: 'drawer', entityId: '$next', after: {'name': clean});
+      drawer = CashDrawer(next, code, clean, true);
+    });
+    _events.notify(LedgerChange.reference);
+    return drawer;
+  }
+
+  /// Renames or (de)activates a drawer. A drawer can be deactivated only
+  /// while its cash is zero in every currency, and never the last active one.
+  Future<void> updateDrawer(int id, {required String name, required bool isActive, required Actor actor}) async {
+    _require(actor, Permissions.settingsManage);
+    final clean = name.trim();
+    if (clean.isEmpty) throw const ValidationError('drawer.name', 'نام صندوق الزامی است.');
+    await _db.transaction((txn) async {
+      final rows = await txn.query('cash_drawers', where: 'id = ?', whereArgs: [id]);
+      if (rows.isEmpty) throw const BusinessRuleError('drawer.missing', 'صندوق پیدا نشد.');
+      final before = rows.first;
+      await _requireUniqueDrawerName(txn, clean, exceptId: id);
+      if (!isActive && before['is_active'] == 1) {
+        final others = await txn.rawQuery(
+            'SELECT COUNT(*) AS n FROM cash_drawers WHERE is_active = 1 AND id <> ?', [id]);
+        if ((others.first['n'] as int) == 0) {
+          throw const BusinessRuleError('drawer.lastActive', 'دست‌کم یک صندوق باید فعال بماند.');
+        }
+        final open = await txn.rawQuery('''
+          SELECT l.currency_code FROM journal_lines l JOIN accounts a ON a.id = l.account_id
+          WHERE a.role = 'cash' AND a.drawer_id = ?
+          GROUP BY l.currency_code HAVING SUM(l.debit_minor - l.credit_minor) <> 0
+        ''', [id]);
+        if (open.isNotEmpty) {
+          throw BusinessRuleError('drawer.openBalance',
+              'تا زمانی که موجودی صندوق صفر نشده، غیرفعال کردن آن مجاز نیست '
+              '(${open.map((r) => r['currency_code']).join('، ')}).');
+        }
+      }
+      await txn.update('cash_drawers', {'name_fa': clean, 'is_active': isActive ? 1 : 0},
+          where: 'id = ?', whereArgs: [id]);
+      await txn.update('accounts', {'name_fa': clean, 'is_active': isActive ? 1 : 0},
+          where: "role = 'cash' AND drawer_id = ?", whereArgs: [id]);
+      await AuditWriter.write(txn,
+          actor: actor,
+          action: 'drawer.update',
+          entityType: 'drawer',
+          entityId: '$id',
+          before: {'name': before['name_fa'], 'active': before['is_active'] == 1},
+          after: {'name': clean, 'active': isActive});
+    });
+    _events.notify(LedgerChange.reference);
+  }
+
+  static Future<void> _requireUniqueDrawerName(DatabaseExecutor txn, String name, {int? exceptId}) async {
+    final dup = await txn.rawQuery(
+      'SELECT 1 FROM cash_drawers WHERE lower(trim(name_fa)) = lower(?) ${exceptId == null ? '' : 'AND id <> ?'} LIMIT 1',
+      [name, ?exceptId],
+    );
+    if (dup.isNotEmpty) throw BusinessRuleError('drawer.exists', 'صندوقی با نام «$name» از قبل وجود دارد.');
+  }
+
   Future<int> walkInCustomerId({DatabaseExecutor? using}) async {
     final rows = await (using ?? _db)
         .query('customers', columns: ['id'], where: 'is_walk_in = 1', limit: 1);

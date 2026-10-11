@@ -221,8 +221,8 @@ class _LegacyImportCardState extends State<LegacyImportCard> with RevisionReload
               title: 'سوابق انتقال',
               itemLabel: 'انتقال',
               columns: const [
-                LedgerColumn('زمان شروع', flex: 2),
-                LedgerColumn('وضعیت', flex: 2),
+                LedgerColumn.dateTime('زمان شروع'),
+                LedgerColumn.status(),
               ],
               rows: [
                 for (final r in _runs)

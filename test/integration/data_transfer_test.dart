@@ -74,6 +74,9 @@ void main() {
     final cash = await h.app.queries.cashBalances();
     final karim = await balances(k);
     final path = await exportFile();
+    final exported = await h.app.transfer.fileLog();
+    expect(exported.single.action, 'data.export');
+    expect(exported.single.entityId, p.basename(path));
 
     await h.receipt(k, 'AFN', afn(70), date: '2026-10-08');
     final extra = await h.customer('later');
@@ -89,6 +92,8 @@ void main() {
 
     final history = await h.app.backups.history();
     expect(history.any((r) => r['kind'] == 'pre_restore'), isTrue, reason: 'safety backup before replacing');
+    final excelLog = await h.app.transfer.fileLog();
+    expect(excelLog.any((e) => e.action == 'data.import' && e.entityId == p.basename(path)), isTrue);
 
     final next = await h.receipt(k, 'AFN', afn(1), date: '2026-10-08');
     expect(next.referenceNo, isNotEmpty);
@@ -177,5 +182,61 @@ void main() {
     await expectLater(h.app.transfer.importFrom(path, cashier), throwsA(isA<AuthorizationError>()));
     await expectLater(h.app.transfer.clearAll(cashier), throwsA(isA<AuthorizationError>()));
     await expectLater(h.app.transfer.exportWorkbook(cashier), throwsA(isA<AuthorizationError>()));
+  });
+
+  test('automatic excel export follows the schedule, records the full path, and keeps history', () async {
+    var now = Harness.fixedNow;
+    final a = await Harness.create(clock: () => now);
+    addTearDown(a.dispose);
+    final t = a.app.transfer;
+    final folder = p.join(a.dir.path, 'auto exports');
+
+    expect(await t.autoExportIfDue(), isNull, reason: 'off by default');
+
+    await a.app.catalog.putSetting('excel.auto_enabled', '1', a.owner);
+    await a.app.catalog.putSetting('excel.auto_interval_hours', '6', a.owner);
+    await a.app.catalog.putSetting('excel.auto_retention_count', '2', a.owner);
+    await a.app.catalog.putSetting('excel.auto_directory', folder, a.owner);
+
+    final first = (await t.autoExportIfDue())!;
+    expect(first['outcome'], 'success');
+    final firstPath = first['file_path'] as String;
+    expect(p.dirname(firstPath), folder);
+    expect(p.basename(firstPath), matches(RegExp(r'^hadid_auto_14\d\d-\d\d-\d\d_\d{6}\.xlsx$')));
+    expect(await File(firstPath).exists(), isTrue);
+
+    now = now.add(const Duration(hours: 5));
+    expect(await t.autoExportIfDue(), isNull, reason: 'interval not reached');
+
+    for (var i = 0; i < 2; i++) {
+      now = now.add(const Duration(hours: 6));
+      expect((await t.autoExportIfDue())!['outcome'], 'success');
+    }
+    final history = await t.autoExportHistory();
+    expect(history, hasLength(3));
+    expect(history.last['file_path'], firstPath);
+    expect(await File(firstPath).exists(), isFalse, reason: 'only the newest 2 files are kept');
+    expect(await File(history.first['file_path'] as String).exists(), isTrue);
+
+    await t.importFrom(history.first['file_path'] as String, a.owner);
+    expect(await t.autoExportHistory(), hasLength(3), reason: 'history survives an excel input');
+    await t.clearAll(a.owner);
+    expect(await t.autoExportHistory(), hasLength(3), reason: 'history survives clearing data');
+
+    final cashier = Actor(userId: 1, displayName: 'c', permissions: const {});
+    expect(() => t.runAutoExport(actor: cashier), throwsA(isA<AuthorizationError>()));
+  });
+
+  test('a failed automatic export is recorded with its target path', () async {
+    final blocker = File(p.join(h.dir.path, 'not a folder'));
+    await blocker.writeAsString('x');
+    await h.app.catalog.putSetting('excel.auto_enabled', '1', h.owner);
+    await h.app.catalog.putSetting('excel.auto_directory', blocker.path, h.owner);
+
+    final row = (await h.app.transfer.autoExportIfDue())!;
+    expect(row['outcome'], 'failure');
+    expect(p.dirname(row['file_path'] as String), blocker.path);
+    expect(row['message'], isNotNull);
+    expect(await h.app.transfer.autoExportIfDue(), isNull, reason: 'a failure waits for the next interval');
   });
 }

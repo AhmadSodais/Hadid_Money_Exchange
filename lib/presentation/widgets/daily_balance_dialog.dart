@@ -175,11 +175,11 @@ class _DailyBalanceDialogState extends State<DailyBalanceDialog> {
             title: 'مانده مورد انتظار (از معاملات)',
             value: MoneyFormat.withName(snap.expectedMinor, c),
             hint: 'اول روز ${MoneyFormat.amount(snap.openingMinor, c)}  ·  '
-                '+${MoneyFormat.amount(snap.inflowMinor, c)}  ·  −${MoneyFormat.amount(snap.outflowMinor, c)}',
+                '+${MoneyFormat.amount(snap.inflowMinor, c)}  ·  -${MoneyFormat.amount(snap.outflowMinor, c)}',
           ),
           DialogMetricBox(
             icon: Icons.difference_outlined,
-            title: 'اختلاف (شمارش − مورد انتظار)',
+            title: 'اختلاف (شمارش - مورد انتظار)',
             value: diff == null ? '—' : MoneyFormat.withName(diff, c),
             valueColor: diff == null || diff == 0 ? null : (diff > 0 ? AppColors.success : AppColors.error),
             hint: diff == null

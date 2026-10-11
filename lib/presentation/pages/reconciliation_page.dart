@@ -4,7 +4,9 @@ import 'package:provider/provider.dart';
 import '../../application/read_models.dart';
 import '../../application/reconciliation_service.dart';
 import '../../core/theme/app_colors.dart';
+import '../../core/theme/app_radius.dart';
 import '../../core/theme/app_typography.dart';
+import '../../core/utils/app_calendar.dart';
 import '../../core/widgets/widgets.dart';
 import '../../domain/money/currency.dart';
 import '../../domain/security/permissions.dart';
@@ -16,7 +18,6 @@ import '../widgets/app_shell.dart';
 import '../widgets/daily_balance_dialog.dart';
 import '../widgets/exchange_ui.dart';
 import '../widgets/settings_kit.dart';
-import '../widgets/workbench_kit.dart';
 
 /// اخذ بیلانس روزانه. Expected = opening + inflows − outflows (from the
 /// ledger); difference = counted − expected. A count never changes the
@@ -31,8 +32,11 @@ class ReconciliationPage extends StatefulWidget {
   State<ReconciliationPage> createState() => _ReconciliationPageState();
 }
 
-/// How far back the "days without a balance" list looks.
+/// How far back the "missed days" panel looks.
 const int _missingLookbackDays = 30;
+
+/// Missed days shown before the rest are summarized.
+const int _missingShown = 8;
 
 class _Row {
   _Row(this.currency, this.snapshot, this.record, {required this.adjustmentPosted});
@@ -56,6 +60,11 @@ class _Row {
     final rec = record;
     return rec != null && !closed && rec.differenceMinor != 0 && !adjustmentPosted;
   }
+
+  /// Has cash, movement or a count on this day; other currencies are counted
+  /// through «افزودن بیلانس».
+  bool get relevant =>
+      record != null || snapshot.openingMinor != 0 || snapshot.inflowMinor != 0 || snapshot.outflowMinor != 0;
 }
 
 enum _Action { count, recount, edit, remove, adjust, close, reopen }
@@ -115,7 +124,8 @@ class _ReconciliationPageState extends State<ReconciliationPage> with RevisionRe
   }
 
   void _goToDate(BusinessDate date) {
-    _date = date;
+    final today = BusinessDate.today();
+    _date = date.isAfter(today) ? today : date;
     reload();
     if (_scroll.hasClients) {
       _scroll.animateTo(0, duration: const Duration(milliseconds: 250), curve: Curves.easeOut);
@@ -155,8 +165,9 @@ class _ReconciliationPageState extends State<ReconciliationPage> with RevisionRe
       context,
       title: 'اصلاح اختلاف ${c.nameFa}',
       message:
-          'یک سند اصلاح صندوق به مبلغ ${MoneyFormat.withName(rec.differenceMinor, c)} '
-          '(${rec.differenceMinor > 0 ? 'اضافه' : 'کسری'}) با تاریخ ${DateFormatFa.business(rec.businessDate)} ثبت می‌شود.',
+          'یک سند اصلاح صندوق به مبلغ ${MoneyFormat.withName(rec.differenceMinor.abs(), c)} '
+          '(${rec.differenceMinor > 0 ? 'اضافه' : 'کسری'}) با تاریخ ${DateFormatFa.business(rec.businessDate)} ثبت می‌شود '
+          'تا موجودی دفتر با پول شمارش‌شده برابر شود.',
       confirmLabel: 'ثبت اصلاح',
     );
     if (reason == null || !mounted) return;
@@ -181,7 +192,7 @@ class _ReconciliationPageState extends State<ReconciliationPage> with RevisionRe
     final reason = await askReason(
       context,
       title: 'بازگشایی روز بسته‌شده',
-      message: 'با بازگشایی، ثبت، ویرایش و حذف معاملات این تاریخ دوباره ممکن می‌شود. دلیل در سوابق ممیزی ثبت می‌شود.',
+      message: 'با بازگشایی، ثبت، ویرایش و حذف معاملات این تاریخ دوباره ممکن می‌شود.',
       confirmLabel: 'بازگشایی',
     );
     if (reason == null || !mounted) return;
@@ -208,160 +219,6 @@ class _ReconciliationPageState extends State<ReconciliationPage> with RevisionRe
     }
   }
 
-  String _statusLabel(ReconciliationRecord? rec) {
-    if (rec == null) return 'ثبت نشده';
-    if (rec.status == 'closed') return 'بسته';
-    if (rec.adjustmentTransactionId != null) return 'باز — اصلاح‌شده';
-    return rec.differenceMinor == 0 ? 'باز — بدون اختلاف' : 'باز — دارای اختلاف';
-  }
-
-  Color _statusColor(ReconciliationRecord? rec) {
-    if (rec == null) return AppColors.textMuted;
-    if (rec.status == 'closed') return AppColors.success;
-    if (rec.adjustmentTransactionId != null || rec.differenceMinor == 0) return AppColors.info;
-    return AppColors.warning;
-  }
-
-  // ------------------------------------------------------------ header card
-
-  Widget _header(SettingsMetrics m) {
-    final total = _rows.length;
-    final counted = _rows.where((r) => r.record != null && !r.stale).length;
-    final stale = _rows.where((r) => r.stale).length;
-    final pending = _rows.where((r) => r.pendingDifference).length;
-    final closed = _rows.where((r) => r.closed).length;
-    final allClosed = total > 0 && closed == total;
-
-    final steps = [
-      _StepItem(
-        step: 1,
-        title: 'ثبت بیلانس هر ارز',
-        detail: stale > 0 ? '$counted از $total ارز — $stale ارز نیاز به شمارش مجدد' : '$counted از $total ارز ثبت شده',
-        done: total > 0 && counted == total,
-      ),
-      _StepItem(
-        step: 2,
-        title: 'اصلاح اختلاف‌ها (در صورت نیاز)',
-        detail: pending == 0 ? 'اختلاف اصلاح‌نشده‌ای نیست' : '$pending ارز دارای اختلاف اصلاح‌نشده',
-        done: total > 0 && counted == total && pending == 0,
-        warning: pending > 0,
-      ),
-      _StepItem(step: 3, title: 'بستن روز', detail: '$closed از $total ارز بسته شده', done: allClosed),
-    ];
-
-    return SettingsSectionCard(
-      icon: Icons.point_of_sale_outlined,
-      title: 'صندوق و تاریخ بیلانس',
-      padding: m.cardPadding,
-      trailing: GfStatusBadge(
-        label: allClosed ? 'بیلانس روز بسته شد' : (closed > 0 ? 'بسته‌شدن ناقص' : 'روز باز'),
-        color: allClosed ? AppColors.success : (closed > 0 ? AppColors.warning : AppColors.info),
-      ),
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final pickers = SettingsFormRow(
-            gap: m.fieldGap,
-            breakpoint: 420,
-            left: DrawerPicker(
-              value: _drawerId,
-              onChanged: (id) {
-                _drawerId = id;
-                context.read<AppSettingsProvider>().setSelectedDrawerId(id);
-                reload();
-              },
-            ),
-            right: BusinessDateField(
-              label: 'تاریخ بیلانس',
-              value: _date,
-              onChanged: (d) {
-                _date = d;
-                reload();
-              },
-            ),
-          );
-          final stepper = constraints.maxWidth < 760
-              ? Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    for (var i = 0; i < steps.length; i++) ...[if (i > 0) SizedBox(height: m.fieldGap), steps[i]],
-                  ],
-                )
-              : Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    for (var i = 0; i < steps.length; i++) ...[
-                      if (i > 0)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 13),
-                          child: SizedBox(width: 28, child: Divider(height: 1, color: AppColors.border)),
-                        ),
-                      Expanded(child: steps[i]),
-                    ],
-                  ],
-                );
-          if (constraints.maxWidth < 1100) {
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                pickers,
-                SizedBox(height: m.gap),
-                stepper,
-              ],
-            );
-          }
-          return Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              SizedBox(width: 460, child: pickers),
-              SizedBox(width: m.gap),
-              Container(width: 1, height: 56, color: AppColors.divider),
-              SizedBox(width: m.gap),
-              Expanded(child: stepper),
-            ],
-          );
-        },
-      ),
-    );
-  }
-
-  // ------------------------------------------------------------- count sheet
-
-  Widget _countSheet(bool canAdjust, bool canReopen) {
-    return LedgerTable(
-      shrinkWrap: true,
-      showRowNumbers: false,
-      minWidth: 1050,
-      title: 'بیلانس ارزها — ${DateFormatFa.business(_date)}',
-      subtitle:
-          'هر ارز جداگانه ثبت می‌شود: روی «ثبت بیلانس» همان ارز بزنید و مبلغ شمارش‌شده را وارد کنید. '
-          'مورد انتظار = مانده اول روز + ورودی − خروجی؛ اختلاف = شمارش − مورد انتظار.',
-      emptyText: 'ارز فعالی برای این صندوق وجود ندارد.',
-      columns: const [
-        LedgerColumn('ارز', width: 100),
-        LedgerColumn('مانده اول روز', flex: 2, numeric: true),
-        LedgerColumn('گردش روز', flex: 2, numeric: true),
-        LedgerColumn('مورد انتظار', flex: 2, numeric: true),
-        LedgerColumn('شمارش‌شده', flex: 2, numeric: true),
-        LedgerColumn('اختلاف', flex: 2, numeric: true),
-        LedgerColumn('وضعیت', width: 132),
-        LedgerColumn('', width: 270),
-      ],
-      rows: [for (final r in _rows) _sheetRow(r, canAdjust, canReopen)],
-    );
-  }
-
-  Widget _movementLine(String sign, int minor, Currency c, Color color) {
-    return Text(
-      '$sign ${MoneyFormat.amount(minor, c)}',
-      textDirection: TextDirection.ltr,
-      style: AppTypography.caption.copyWith(
-        color: minor == 0 ? AppColors.textMuted : color,
-        fontWeight: FontWeight.w500,
-        fontFeatures: const [FontFeature.tabularFigures()],
-      ),
-    );
-  }
-
   List<_Action> _actionsFor(_Row r, bool canAdjust, bool canReopen) {
     final rec = r.record;
     if (rec == null) return const [_Action.count];
@@ -376,131 +233,322 @@ class _ReconciliationPageState extends State<ReconciliationPage> with RevisionRe
     ];
   }
 
-  List<Widget> _sheetRow(_Row r, bool canAdjust, bool canReopen) {
-    final c = r.currency;
-    final snap = r.snapshot;
-    final rec = r.record;
-    final actions = _actionsFor(r, canAdjust, canReopen);
-    final primary = actions.isEmpty ? null : actions.first;
-    String label(_Action a) => switch (a) {
-      _Action.count => 'ثبت بیلانس',
-      _Action.recount => 'شمارش مجدد',
-      _Action.edit => 'ویرایش شمارش',
-      _Action.remove => 'حذف شمارش',
-      _Action.adjust => 'اصلاح اختلاف',
-      _Action.close => 'بستن روز',
-      _Action.reopen => 'بازگشایی',
-    };
-    IconData icon(_Action a) => switch (a) {
-      _Action.count => Icons.add_rounded,
-      _Action.recount || _Action.edit => Icons.edit_outlined,
-      _Action.remove => Icons.delete_outline_rounded,
-      _Action.adjust => Icons.tune,
-      _Action.close => Icons.lock_outline,
-      _Action.reopen => Icons.lock_open,
-    };
+  static String _actionLabel(_Action a) => switch (a) {
+    _Action.count => 'ثبت بیلانس',
+    _Action.recount => 'شمارش مجدد',
+    _Action.edit => 'ویرایش',
+    _Action.remove => 'حذف شمارش',
+    _Action.adjust => 'اصلاح اختلاف',
+    _Action.close => 'بستن روز',
+    _Action.reopen => 'بازگشایی روز',
+  };
 
-    return [
-      Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(c.nameFa, style: AppTypography.bodySemiBold),
-          Text(c.code, style: AppTypography.caption.copyWith(color: AppColors.textMuted)),
-        ],
-      ),
-      AmountText(snap.openingMinor, c),
-      Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          _movementLine('+', snap.inflowMinor, c, AppColors.success),
-          _movementLine('-', snap.outflowMinor, c, AppColors.error),
-        ],
-      ),
-      AmountText(snap.expectedMinor, c, bold: true),
-      rec == null
-          ? Text('—', style: AppTypography.body.copyWith(color: AppColors.textMuted))
-          : AmountText(rec.countedMinor, c, bold: true),
-      rec == null
-          ? Text('—', style: AppTypography.body.copyWith(color: AppColors.textMuted))
-          : AmountText(rec.differenceMinor, c, signColor: true, bold: true),
-      r.stale
-          ? Tooltip(
-              message: 'پس از ثبت بیلانس، معاملات این روز تغییر کرده است؛ دوباره شمارش کنید.',
-              child: GfStatusBadge(label: 'شمارش مجدد', color: AppColors.warning, compact: true),
-            )
-          : GfStatusBadge(label: _statusLabel(rec), color: _statusColor(rec), compact: true),
-      FittedBox(
-        fit: BoxFit.scaleDown,
-        alignment: AlignmentDirectional.centerStart,
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (primary == null)
-              Text('—', style: AppTypography.body.copyWith(color: AppColors.textMuted))
-            else if (primary == _Action.reopen)
-              GfDangerButton(
-                label: label(primary),
-                icon: icon(primary),
-                compact: true,
-                onPressed: () => _run(primary, r),
-              )
-            else if (primary == _Action.count || primary == _Action.recount)
-              GfPrimaryButton(
-                label: label(primary),
-                icon: icon(primary),
-                compact: true,
-                onPressed: () => _run(primary, r),
-              )
-            else
-              GfSecondaryButton(
-                label: label(primary),
-                icon: icon(primary),
-                compact: true,
-                onPressed: () => _run(primary, r),
-              ),
-            if (actions.length > 1)
-              LedgerRowMenu(
-                onSelected: (v) => _run(_Action.values.byName(v), r),
-                items: [
-                  for (final a in actions.skip(1))
-                    gfPopupMenuItem(value: a.name, label: label(a), danger: a == _Action.remove || a == _Action.reopen),
-                ],
-              ),
-          ],
-        ),
-      ),
-    ];
+  static IconData _actionIcon(_Action a) => switch (a) {
+    _Action.count => Icons.add_rounded,
+    _Action.recount || _Action.edit => Icons.edit_outlined,
+    _Action.remove => Icons.delete_outline_rounded,
+    _Action.adjust => Icons.tune,
+    _Action.close => Icons.lock_outline,
+    _Action.reopen => Icons.lock_open,
+  };
+
+  static String _statusLabel(ReconciliationRecord? rec) {
+    if (rec == null) return 'ثبت نشده';
+    if (rec.status == 'closed') return 'بسته شد';
+    if (rec.adjustmentTransactionId != null) return 'اختلاف اصلاح شد';
+    return rec.differenceMinor == 0 ? 'برابر — آماده بستن' : 'دارای اختلاف';
   }
 
-  // ---------------------------------------------------------- missing days
+  static Color _statusColor(ReconciliationRecord? rec) {
+    if (rec == null) return AppColors.textMuted;
+    if (rec.status == 'closed') return AppColors.success;
+    if (rec.adjustmentTransactionId != null || rec.differenceMinor == 0) return AppColors.info;
+    return AppColors.warning;
+  }
 
-  Widget _missingDays(AppSession s) {
-    return LedgerTable(
-      shrinkWrap: true,
-      fixedRows: 5,
-      showRowNumbers: false,
-      title: 'روزهای بدون بیلانس ($_missingLookbackDays روز اخیر)',
-      subtitle:
-          'در این روزها معامله نقدی ثبت شده اما بیلانس آن ارز ثبت نشده است. '
-          'بیلانس روز گذشته را هر وقت خواستید از همین‌جا ثبت کنید؛ روی ردیف بزنید تا آن روز باز شود.',
-      itemLabel: 'روز',
-      onTapRow: (i) => _goToDate(_missing[i].date),
-      columns: const [LedgerColumn('تاریخ', flex: 2), LedgerColumn('ارز', flex: 2), LedgerColumn('', width: 150)],
-      rows: [
-        for (final m in _missing)
-          [
-            Text(DateFormatFa.business(m.date), style: AppTypography.body),
-            Text(s.currency(m.currency)?.nameFa ?? m.currency, style: AppTypography.bodyMedium),
-            GfSecondaryButton(
-              label: 'ثبت بیلانس',
-              icon: Icons.add_rounded,
-              compact: true,
-              onPressed: () => _addBalance(currency: s.currency(m.currency), date: m.date),
-            ),
-          ],
+  String _longDate(BusinessDate d) => '${AppCalendar.weekdayName(d.toDateTime())} ${DateFormatFa.business(d)}';
+
+  // ------------------------------------------------------------ header card
+
+  Widget _header(SettingsMetrics m, List<_Row> relevant) {
+    final today = BusinessDate.today();
+    final total = relevant.length;
+    final counted = relevant.where((r) => r.record != null && !r.stale).length;
+    final pending = relevant.where((r) => r.pendingDifference || r.stale).length;
+    final closed = relevant.where((r) => r.closed).length;
+    final allClosed = total > 0 && closed == total;
+
+    final (statusText, statusColor) = total == 0
+        ? ('بدون موجودی', AppColors.textMuted)
+        : allClosed
+        ? ('روز بسته شد', AppColors.success)
+        : counted == 0
+        ? ('شمارش نشده', AppColors.warning)
+        : ('در حال انجام', AppColors.info);
+
+    final dateNav = Row(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        GfIconButton(
+          icon: Icons.chevron_right_rounded,
+          tooltip: 'روز قبل',
+          onPressed: () => _goToDate(_date.addDays(-1)),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: BusinessDateField(label: 'تاریخ بیلانس', value: _date, onChanged: _goToDate),
+        ),
+        const SizedBox(width: 8),
+        GfIconButton(
+          icon: Icons.chevron_left_rounded,
+          tooltip: 'روز بعد',
+          onPressed: _date.isBefore(today) ? () => _goToDate(_date.addDays(1)) : null,
+        ),
+        if (_date != today) ...[
+          const SizedBox(width: 8),
+          GfSecondaryButton(label: 'امروز', icon: Icons.today_outlined, onPressed: () => _goToDate(today)),
+        ],
       ],
+    );
+
+    final drawer = DrawerPicker(
+      value: _drawerId,
+      onChanged: (id) {
+        _drawerId = id;
+        context.read<AppSettingsProvider>().setSelectedDrawerId(id);
+        reload();
+      },
+    );
+
+    final progress = total == 0
+        ? null
+        : 'شمارش: $counted از $total  ·  بسته: $closed از $total${pending > 0 ? '  ·  نیاز به رسیدگی: $pending' : ''}';
+
+    return GfCard(
+      padding: EdgeInsets.all(m.cardPadding),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final pickers = constraints.maxWidth >= 680
+              ? Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    SizedBox(width: 220, child: drawer),
+                    SizedBox(width: m.fieldGap),
+                    SizedBox(width: 420, child: dateNav),
+                  ],
+                )
+              : Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    drawer,
+                    SizedBox(height: m.fieldGap),
+                    dateNav,
+                  ],
+                );
+          final status = Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // GfStatusBadge(label: statusText, color: statusColor),
+              // if (progress != null) ...[
+              //   const SizedBox(width: 10),
+              //   Flexible(
+              //     child: Text(
+              //       progress,
+              //       maxLines: 1,
+              //       overflow: TextOverflow.ellipsis,
+              //       style: AppTypography.caption.copyWith(color: AppColors.textSecondary),
+              //     ),
+              //   ),
+              // ],
+            ],
+          );
+          if (constraints.maxWidth < 1000) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                pickers,
+                SizedBox(height: m.fieldGap),
+                status,
+              ],
+            );
+          }
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              pickers,
+              SizedBox(width: m.gap),
+              Expanded(child: Align(alignment: AlignmentDirectional.centerEnd, child: status)),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  // ---------------------------------------------------------- balance table
+
+  Widget _balanceTable(List<_Row> relevant, bool canAdjust, bool canReopen, bool canCount) {
+    Widget plain(int minor, Currency c, {String sign = '', Color? color}) => Text(
+      minor == 0 ? '—' : '$sign${MoneyFormat.amount(minor, c)}',
+      textDirection: TextDirection.ltr,
+      style: AppTypography.body.copyWith(
+        color: minor == 0 ? AppColors.textMuted : (color ?? AppColors.textPrimary),
+        fontFeatures: const [FontFeature.tabularFigures()],
+      ),
+    );
+    final dash = Text('—', style: AppTypography.body.copyWith(color: AppColors.textMuted));
+
+    // Narrow windows drop the day's movement so the actions stay on screen.
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final full = constraints.maxWidth >= 1100;
+        return LedgerTable(
+          shrinkWrap: true,
+          showRowNumbers: false,
+          title: 'موجودی صندوق به تفکیک ارز',
+          minWidth: full ? 1100 : 760,
+          emptyText: 'در این روز هیچ ارزی موجودی یا معامله ندارد.',
+          emptyHint: 'برای ثبت شمارش، «افزودن بیلانس» را بزنید.',
+          columns: [
+            const LedgerColumn.primary('ارز'),
+            if (full) ...const [
+              LedgerColumn.amount('اول روز'),
+              LedgerColumn.amount('دریافت'),
+              LedgerColumn.amount('پرداخت'),
+            ],
+            const LedgerColumn.amount('باید باشد'),
+            const LedgerColumn.amount('شمارش‌شده'),
+            const LedgerColumn.amount('اختلاف'),
+            const LedgerColumn.status(),
+            const LedgerColumn.actions(width: 170),
+          ],
+          rows: [
+            for (final r in relevant)
+              () {
+                final c = r.currency;
+                final rec = r.record;
+                return <Widget>[
+                  Text.rich(
+                    TextSpan(
+                      children: [
+                        TextSpan(text: c.nameFa, style: AppTypography.bodySemiBold),
+                        TextSpan(
+                          text: '  ${c.code}',
+                          style: AppTypography.caption.copyWith(color: AppColors.textMuted),
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (full) ...[
+                    AmountText(r.snapshot.openingMinor, c),
+                    plain(r.snapshot.inflowMinor, c, sign: '+', color: AppColors.success),
+                    plain(r.snapshot.outflowMinor, c, sign: '-', color: AppColors.error),
+                  ],
+                  AmountText(r.snapshot.expectedMinor, c, bold: true),
+                  rec == null ? dash : AmountText(rec.countedMinor, c, bold: true),
+                  rec == null || r.stale ? dash : _DifferenceText(rec.differenceMinor, c),
+                  GfStatusBadge(
+                    label: r.stale ? 'شمارش مجدد لازم است' : _statusLabel(rec),
+                    color: r.stale ? AppColors.warning : _statusColor(rec),
+                    compact: true,
+                  ),
+                  _RowActions(
+                    actions: _actionsFor(r, canAdjust, canReopen),
+                    canCount: canCount,
+                    onAction: (a) => _run(a, r),
+                  ),
+                ];
+              }(),
+          ],
+        );
+      },
+    );
+  }
+
+  // ------------------------------------------------------------ missed days
+
+  Widget _missedDays(AppSession s) {
+    final byDate = <BusinessDate, List<String>>{};
+    for (final x in _missing) {
+      (byDate[x.date] ??= []).add(x.currency);
+    }
+    final dates = byDate.keys.toList();
+    final shown = dates.take(_missingShown).toList();
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: AppColors.warningBg,
+        borderRadius: AppRadius.card,
+        border: Border.all(color: AppColors.warning.withValues(alpha: 0.35)),
+      ),
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.event_busy_outlined, size: 18, color: AppColors.warning),
+              const SizedBox(width: 8),
+              Text('بیلانس ${dates.length} روز ثبت نشده:', style: AppTypography.bodySemiBold),
+            ],
+          ),
+          for (final d in shown)
+            ActionChip(
+              label: Text(DateFormatFa.business(d), style: AppTypography.caption),
+              tooltip:
+                  '${_longDate(d)} — ${[for (final code in byDate[d]!) s.currency(code)?.nameFa ?? code].join('، ')}',
+              onPressed: () => _goToDate(d),
+              backgroundColor: AppColors.card,
+              side: BorderSide(color: AppColors.warning.withValues(alpha: 0.4)),
+              visualDensity: VisualDensity.compact,
+            ),
+          if (dates.length > shown.length)
+            Text(
+              'و ${dates.length - shown.length} روز دیگر',
+              style: AppTypography.caption.copyWith(color: AppColors.textMuted),
+            ),
+        ],
+      ),
+    );
+  }
+
+  // ---------------------------------------------------------------- history
+
+  Widget _historyTable(AppSession s) {
+    return SizedBox(
+      height: 520,
+      child: LedgerTable(
+        title: 'سابقه بیلانس‌ها',
+        subtitle: 'روی هر ردیف بزنید تا همان روز باز شود.',
+        minWidth: 900,
+        itemLabel: 'بیلانس',
+        emptyText: 'هنوز بیلانسی ثبت نشده است.',
+        onTapRow: (i) => _goToDate(_history[i].businessDate),
+        columns: const [
+          LedgerColumn.date(),
+          LedgerColumn.text('ارز'),
+          LedgerColumn.amount('باید باشد'),
+          LedgerColumn.amount('شمارش‌شده'),
+          LedgerColumn.amount('اختلاف'),
+          LedgerColumn.status(),
+        ],
+        rows: [
+          for (final h in _history)
+            [
+              Tooltip(
+                message: _longDate(h.businessDate),
+                child: Text(DateFormatFa.business(h.businessDate), style: AppTypography.body),
+              ),
+              Text(s.currency(h.currency)?.nameFa ?? h.currency, style: AppTypography.bodyMedium),
+              AmountText(h.expectedMinor, s.currency(h.currency)),
+              AmountText(h.countedMinor, s.currency(h.currency), bold: true),
+              _DifferenceText(h.differenceMinor, s.currency(h.currency)),
+              GfStatusBadge(label: _statusLabel(h), color: _statusColor(h), compact: true),
+            ],
+        ],
+      ),
     );
   }
 
@@ -510,9 +558,10 @@ class _ReconciliationPageState extends State<ReconciliationPage> with RevisionRe
     final canReopen = s.can(Permissions.reconciliationReopen);
     final canAdjust = s.can(Permissions.adjustmentsPost);
     final canCount = s.can(Permissions.reconciliationPerform);
+    final relevant = _rows.where((r) => r.relevant).toList();
     return PageScaffold(
       title: 'بیلانس روزانه صندوق',
-      subtitle: 'ثبت شمارش نقد هر ارز، مقایسه با دفتر و بستن روز',
+      subtitle: 'شمارش پول نقد هر ارز در پایان روز، مقایسه با دفتر و بستن روز',
       actions: [
         if (canCount)
           GfPrimaryButton(
@@ -529,41 +578,12 @@ class _ReconciliationPageState extends State<ReconciliationPage> with RevisionRe
                 return ListView(
                   controller: _scroll,
                   children: [
-                    _header(m),
+                    _header(m, relevant),
+                    if (_missing.isNotEmpty) ...[SizedBox(height: m.fieldGap), _missedDays(s)],
                     SizedBox(height: m.gap),
-                    _countSheet(canAdjust, canReopen),
-                    if (_missing.isNotEmpty) ...[SizedBox(height: m.gap), _missingDays(s)],
+                    _balanceTable(relevant, canAdjust, canReopen, canCount),
                     SizedBox(height: m.gap),
-                    SizedBox(
-                      height: 460,
-                      child: LedgerTable(
-                        title: 'سابقه بیلانس‌ها',
-                        subtitle: 'آخرین ۶۰ بیلانس این صندوق؛ برای باز کردن آن روز روی ردیف بزنید.',
-                        minWidth: 860,
-                        itemLabel: 'بیلانس',
-                        emptyText: 'هنوز بیلانسی ثبت نشده است.',
-                        onTapRow: (i) => _goToDate(_history[i].businessDate),
-                        columns: const [
-                          LedgerColumn('تاریخ', width: 110),
-                          LedgerColumn('ارز', width: 90),
-                          LedgerColumn('مورد انتظار', flex: 2, numeric: true),
-                          LedgerColumn('شمارش', flex: 2, numeric: true),
-                          LedgerColumn('اختلاف', flex: 2, numeric: true),
-                          LedgerColumn('وضعیت', flex: 2),
-                        ],
-                        rows: [
-                          for (final h in _history)
-                            [
-                              Text(DateFormatFa.business(h.businessDate), style: AppTypography.body),
-                              Text(s.currency(h.currency)?.nameFa ?? h.currency, style: AppTypography.bodyMedium),
-                              AmountText(h.expectedMinor, s.currency(h.currency)),
-                              AmountText(h.countedMinor, s.currency(h.currency)),
-                              AmountText(h.differenceMinor, s.currency(h.currency), signColor: true),
-                              GfStatusBadge(label: _statusLabel(h), color: _statusColor(h), compact: true),
-                            ],
-                        ],
-                      ),
-                    ),
+                    _historyTable(s),
                   ],
                 );
               },
@@ -572,42 +592,90 @@ class _ReconciliationPageState extends State<ReconciliationPage> with RevisionRe
   }
 }
 
-class _StepItem extends StatelessWidget {
-  const _StepItem({
-    required this.step,
-    required this.title,
-    required this.detail,
-    required this.done,
-    this.warning = false,
-  });
+// ----------------------------------------------------------------- widgets
 
-  final int step;
-  final String title;
-  final String detail;
-  final bool done;
-  final bool warning;
+/// The next step as one compact button; the remaining actions in a menu.
+class _RowActions extends StatelessWidget {
+  const _RowActions({required this.actions, required this.canCount, required this.onAction});
+
+  final List<_Action> actions;
+  final bool canCount;
+  final ValueChanged<_Action> onAction;
+
+  bool _allowed(_Action a) => canCount || a == _Action.reopen || a == _Action.adjust;
 
   @override
   Widget build(BuildContext context) {
+    if (actions.isEmpty) return const SizedBox.shrink();
+    final main = actions.first;
+    final label = _ReconciliationPageState._actionLabel(main);
+    final icon = _ReconciliationPageState._actionIcon(main);
+    final onPressed = _allowed(main) ? () => onAction(main) : null;
+    final rest = actions.skip(1).where(_allowed).toList();
     return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
       children: [
-        WorkbenchStepBadge(step: step, done: done),
-        const SizedBox(width: 10),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(title, style: AppTypography.bodySemiBold, maxLines: 1, overflow: TextOverflow.ellipsis),
-              const SizedBox(height: 2),
-              Text(
-                detail,
-                style: AppTypography.caption.copyWith(
-                  color: done ? AppColors.success : (warning ? AppColors.warning : AppColors.textSecondary),
+        Flexible(
+          child: main == _Action.reopen
+              ? GfSecondaryButton(label: label, icon: icon, compact: true, onPressed: onPressed)
+              : GfPrimaryButton(label: label, icon: icon, compact: true, onPressed: onPressed),
+        ),
+        if (rest.isNotEmpty)
+          LedgerRowMenu(
+            items: [
+              for (final a in rest)
+                PopupMenuItem(
+                  value: a.name,
+                  child: Row(
+                    children: [
+                      Icon(
+                        _ReconciliationPageState._actionIcon(a),
+                        size: 18,
+                        color: a == _Action.remove ? AppColors.error : AppColors.textSecondary,
+                      ),
+                      const SizedBox(width: 10),
+                      Text(
+                        _ReconciliationPageState._actionLabel(a),
+                        style: AppTypography.body.copyWith(color: a == _Action.remove ? AppColors.error : null),
+                      ),
+                    ],
+                  ),
                 ),
-                maxLines: 2,
-              ),
             ],
+            onSelected: (name) => onAction(_Action.values.byName(name)),
+          ),
+      ],
+    );
+  }
+}
+
+class _DifferenceText extends StatelessWidget {
+  const _DifferenceText(this.minor, this.currency);
+
+  final int minor;
+  final Currency? currency;
+
+  @override
+  Widget build(BuildContext context) {
+    if (minor == 0) {
+      return Text('برابر', style: AppTypography.body.copyWith(color: AppColors.success));
+    }
+    final color = minor > 0 ? AppColors.warning : AppColors.error;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(minor > 0 ? 'اضافه' : 'کسری', style: AppTypography.caption.copyWith(color: color)),
+        const SizedBox(width: 6),
+        Flexible(
+          child: Text(
+            MoneyFormat.amount(minor.abs(), currency),
+            textDirection: TextDirection.ltr,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: AppTypography.bodySemiBold.copyWith(
+              color: color,
+              fontFeatures: const [FontFeature.tabularFigures()],
+            ),
           ),
         ),
       ],

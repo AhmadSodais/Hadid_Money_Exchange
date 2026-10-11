@@ -7,7 +7,10 @@ import 'package:shamsi_date/shamsi_date.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import '../../application/app_services.dart';
+import '../../application/audit_writer.dart';
+import '../../application/ledger_events.dart';
 import '../../application/ledger_queries.dart';
+import '../../application/read_models.dart';
 import '../../application/security_service.dart';
 import '../../domain/accounting/account.dart';
 import '../../domain/errors/domain_errors.dart';
@@ -74,6 +77,10 @@ final class DataTransferService {
   /// Builds the full-data workbook.
   Future<(List<int>, DataTransferSummary)> exportWorkbook(Actor actor) async {
     _require(actor, Permissions.backupCreate, 'اجازه خروجی گرفتن از داده‌ها را ندارید.');
+    return _buildWorkbook();
+  }
+
+  Future<(List<int>, DataTransferSummary)> _buildWorkbook() async {
     final summary = <String, int>{};
     final sheets = <ExportSheet>[];
     late Map<String, Object?> fingerprint;
@@ -121,7 +128,110 @@ final class DataTransferService {
   Future<DataTransferSummary> exportTo(String path, Actor actor) async {
     final (bytes, summary) = await exportWorkbook(actor);
     await File(path).writeAsBytes(bytes, flush: true);
+    await AuditWriter.write(
+      _app.db,
+      actor: actor,
+      action: 'data.export',
+      entityType: 'excel',
+      entityId: p.basename(path),
+      after: {
+        'transactions': summary['transactions'] ?? 0,
+        'customers': summary['customers'] ?? 0,
+      },
+    );
     return summary;
+  }
+
+  // ------------------------------------------------------------ auto export
+
+  /// Folder for automatic exports: the configured one, else the default.
+  Future<String> autoExportDirectory() async {
+    final configured = (await _app.catalog.setting('excel.auto_directory'))?.trim();
+    return configured == null || configured.isEmpty ? _app.excelExportDirectory : configured;
+  }
+
+  /// Writes a workbook to the automatic-export folder when enabled and the
+  /// last attempt is older than the configured interval. Every attempt,
+  /// successful or not, is recorded in `excel_export_history`. Returns the
+  /// history row, or null when not due or disabled.
+  Future<Map<String, Object?>?> autoExportIfDue() async {
+    if (await _app.catalog.setting('excel.auto_enabled') != '1') return null;
+    final hours = int.tryParse(await _app.catalog.setting('excel.auto_interval_hours') ?? '') ?? 24;
+    final rows = await _app.db.rawQuery('SELECT MAX(created_at) AS t FROM excel_export_history');
+    final last = rows.first['t'] as String?;
+    final now = _app.now().toUtc();
+    if (last != null && now.difference(DateTime.parse(last)) < Duration(hours: hours)) return null;
+    return runAutoExport();
+  }
+
+  /// Runs one automatic export now, regardless of the schedule. A call made
+  /// while another automatic export is running joins that one. [actor] is
+  /// null only for the scheduler.
+  Future<Map<String, Object?>> runAutoExport({Actor? actor}) {
+    if (actor != null) _require(actor, Permissions.backupCreate, 'اجازه خروجی گرفتن از داده‌ها را ندارید.');
+    final running = _autoExport;
+    if (running != null) return running;
+    return _autoExport = _runAutoExport().whenComplete(() => _autoExport = null);
+  }
+
+  Future<Map<String, Object?>>? _autoExport;
+
+  Future<Map<String, Object?>> _runAutoExport() async {
+    final now = _app.now();
+    final dir = await autoExportDirectory();
+    final stamp = _shamsiTimestamp(now.toUtc()).replaceAll('/', '-').replaceAll(':', '').replaceAll(' ', '_');
+    var target = p.join(dir, 'hadid_auto_$stamp.xlsx');
+    var n = 2;
+    while (await File(target).exists()) {
+      target = p.join(dir, 'hadid_auto_${stamp}_${n++}.xlsx');
+    }
+    final row = <String, Object?>{'file_path': target, 'created_at': now.toUtc().toIso8601String()};
+    try {
+      await Directory(dir).create(recursive: true);
+      final (bytes, summary) = await _buildWorkbook();
+      await File(target).writeAsBytes(bytes, flush: true);
+      row.addAll({'outcome': 'success', 'size_bytes': bytes.length, 'transactions': summary['transactions'] ?? 0});
+    } catch (e) {
+      row.addAll({'outcome': 'failure', 'message': '$e'});
+    }
+    row['id'] = await _app.db.insert('excel_export_history', row);
+    if (row['outcome'] == 'success') await _applyAutoRetention();
+    _app.events.notify(LedgerChange.export);
+    return row;
+  }
+
+  Future<List<Map<String, Object?>>> autoExportHistory({int limit = 100}) =>
+      _app.db.query('excel_export_history', orderBy: 'id DESC', limit: limit);
+
+  /// Deletes automatic export files beyond the retention count. Only files
+  /// recorded in the history are touched, never other files in the folder.
+  Future<void> _applyAutoRetention() async {
+    final keep = int.tryParse(await _app.catalog.setting('excel.auto_retention_count') ?? '') ?? 30;
+    final old = await _app.db.query(
+      'excel_export_history',
+      columns: ['file_path'],
+      where: "outcome = 'success'",
+      orderBy: 'id DESC',
+      limit: -1,
+      offset: keep,
+    );
+    for (final r in old) {
+      final f = File(r['file_path'] as String);
+      try {
+        if (await f.exists()) await f.delete();
+      } catch (_) {}
+    }
+  }
+
+  /// Newest Excel output, input, and clear-all events.
+  Future<List<AuditEntry>> fileLog({int limit = 100}) async {
+    final rows = await _app.db.rawQuery('''
+      SELECT a.*, u.display_name AS actor_name
+      FROM audit_logs a LEFT JOIN users u ON u.id = a.actor_user_id
+      WHERE a.action IN ('data.export', 'data.import', 'data.clear')
+      ORDER BY a.id DESC LIMIT ?
+    ''', [limit]);
+    return rows.map(AuditEntry.fromRow).toList();
   }
 
   // ------------------------------------------------------------------ import
@@ -312,12 +422,14 @@ final class DataTransferService {
   // ------------------------------------------------------------------- clear
 
   /// Removes every customer, transaction, rate, balance count and audit
-  /// entry. Exchange information, posting policies and currency definitions
-  /// are kept. A safety backup of the removed data is taken first.
+  /// entry. Exchange information, posting policies, currency definitions and
+  /// user names and phone numbers are kept. A safety backup of the removed
+  /// data is taken first.
   Future<void> clearAll(Actor actor) async {
     _require(actor, Permissions.backupRestore, 'اجازه پاک کردن داده‌ها را ندارید.');
     final settings = await _app.db.query('application_settings');
     final currencies = await _app.db.query('currencies', orderBy: 'sort_order, code');
+    final profiles = await _app.db.query('users', columns: ['id', 'display_name', 'phone']);
 
     final staging = '${_app.databasePath}.clear-staging';
     await _deleteDatabaseFiles(staging);
@@ -331,6 +443,10 @@ final class DataTransferService {
           for (final c in currencies) {
             final updated = await txn.update('currencies', c, where: 'code = ?', whereArgs: [c['code']]);
             if (updated == 0) await txn.insert('currencies', c);
+          }
+          for (final u in profiles) {
+            await txn.update('users', {'display_name': u['display_name'], 'phone': u['phone']},
+                where: 'id = ?', whereArgs: [u['id']]);
           }
         });
       } finally {

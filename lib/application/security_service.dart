@@ -5,16 +5,19 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import '../core/security/app_lock_crypto.dart';
 import '../domain/errors/domain_errors.dart';
 import '../domain/security/permissions.dart';
+import '../domain/money/decimal.dart';
 import 'audit_writer.dart';
+import 'ledger_events.dart';
 
 /// Staff accounts, password verification, and permission resolution.
 ///
 /// Passwords are stored as salted PBKDF2-HMAC-SHA256 hashes with a per-user
 /// iteration count; plaintext is never stored or logged.
 final class SecurityService {
-  SecurityService(this._db);
+  SecurityService(this._db, this._events);
 
   final Database _db;
+  final LedgerEvents _events;
 
   static const int passwordIterations = 120000;
   static const int maxFailedAttempts = 5;
@@ -38,6 +41,48 @@ final class SecurityService {
           if (r['permission_code'] != null) r['permission_code'] as String,
       },
     );
+  }
+
+  Future<({String displayName, String? phone})> profile(int userId) async {
+    final rows = await _db.query('users', columns: ['display_name', 'phone'], where: 'id = ?', whereArgs: [userId]);
+    if (rows.isEmpty) throw const NotFoundError('user.notFound', 'کاربر پیدا نشد.');
+    return (displayName: rows.first['display_name'] as String, phone: rows.first['phone'] as String?);
+  }
+
+  /// Updates the name shown in the app and the user's own phone number.
+  Future<void> updateProfile(int userId, {required String displayName, String? phone, required Actor actor}) async {
+    if (actor.userId != userId && !actor.can(Permissions.settingsManage)) {
+      throw const AuthorizationError('auth.denied', 'اجازه ویرایش مشخصات این کاربر را ندارید.');
+    }
+    final name = displayName.trim();
+    if (name.isEmpty) {
+      throw const ValidationError('user.name', 'نام کاربری الزامی است.', field: 'displayName');
+    }
+    if (name.length > 60) {
+      throw const ValidationError('user.name', 'نام کاربری حداکثر ۶۰ حرف باشد.', field: 'displayName');
+    }
+    final cleanPhone = phone == null || phone.trim().isEmpty ? null : Decimal.normalizeDigits(phone.trim());
+    if (cleanPhone != null && !RegExp(r'^\+?[0-9 \-]{6,20}$').hasMatch(cleanPhone)) {
+      throw const ValidationError('user.phone', 'شماره تماس معتبر نیست.', field: 'phone');
+    }
+    await _db.transaction((txn) async {
+      final rows = await txn.query('users', columns: ['display_name', 'phone'], where: 'id = ?', whereArgs: [userId]);
+      if (rows.isEmpty) throw const NotFoundError('user.notFound', 'کاربر پیدا نشد.');
+      await txn.update(
+        'users',
+        {'display_name': name, 'phone': cleanPhone, 'updated_at': DateTime.now().toUtc().toIso8601String()},
+        where: 'id = ?',
+        whereArgs: [userId],
+      );
+      await AuditWriter.write(txn,
+          actor: actor,
+          action: 'user.profileUpdate',
+          entityType: 'user',
+          entityId: '$userId',
+          before: {'display_name': rows.first['display_name'], 'phone': rows.first['phone']},
+          after: {'display_name': name, 'phone': cleanPhone});
+    });
+    _events.notify(LedgerChange.reference);
   }
 
   Future<void> setPassword(int userId, String password, Actor actor) async {

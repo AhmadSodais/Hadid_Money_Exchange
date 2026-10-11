@@ -43,13 +43,15 @@ Each backup is a pair of files:
 - `hadid_backup_<timestamp>_<kind>.db`: a consistent copy made with SQLite `VACUUM INTO` while the app runs;
 - `hadid_backup_<timestamp>_<kind>.manifest.json`: app id, format and schema version, creation time, size, SHA-256 of the `.db`, and a ledger fingerprint (transaction and line counts and per-currency totals).
 
-Kinds: `manual` (button in Settings), `auto` (at startup when the last automatic backup is older than the interval, default 24 hours), `pre_restore` (made automatically before every restore), `pre_migration` (made before a legacy import). Only `auto` backups are pruned, keeping the newest 30 by default.
+Kinds: `manual` (the backup screen, kept in code), `auto` (at startup when the last automatic backup is older than the interval, default 24 hours), `pre_restore` (made automatically before every restore, including an Excel input or a full data clear), `pre_migration` (made before a legacy import). Only `auto` backups are pruned, keeping the newest 30 by default.
+
+«پشتیبان‌گیری و بازیابی» is hidden from the settings navigation. The screen still holds manual backup, verify, restore, the automatic-backup interval, the backup history, and the Excel file log (output, input, and clear). Automatic backup keeps running at startup. Excel input and output, the automatic Excel export settings, and the automatic export history are under Settings → «مدیریت داده‌ها».
 
 **A backup on the same disk is not enough.** Copy the `backups` folder (both files of each pair) to a USB drive or another computer at least once a week, and keep several generations.
 
 ## Verify a backup
 
-Settings → «پشتیبان‌گیری و بازیابی» → «بررسی فایل پشتیبان». The check:
+The in-app check (on the hidden «پشتیبان‌گیری و بازیابی» screen, «بررسی فایل پشتیبان»):
 
 1. confirms the file is an SQLite database;
 2. compares its SHA-256 with the manifest;
@@ -62,7 +64,7 @@ Nothing is modified by a verification.
 
 ## Restore from inside the app
 
-Settings → «پشتیبان‌گیری و بازیابی» → «بازیابی از پشتیبان», choose the `.db`, and type «بازیابی» to confirm. The app:
+From the hidden «پشتیبان‌گیری و بازیابی» screen, «بازیابی از پشتیبان»: choose the `.db` and type «بازیابی» to confirm. While that screen is hidden, use the file procedure below. When the screen is available, the app:
 
 1. verifies the backup and refuses an invalid one;
 2. makes a `pre_restore` backup of the current database;

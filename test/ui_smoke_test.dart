@@ -214,9 +214,11 @@ void main() {
         final tiles = find.byType(SettingsNavTile);
         expect(tiles, findsWidgets);
         final labels = [for (final e in tiles.evaluate()) (e.widget as SettingsNavTile).label];
-        expect(labels, containsAll(['اطلاعات صرافی', 'ورودی و خروجی اکسل', 'درباره برنامه']));
+        expect(labels, containsAll(['اطلاعات صرافی', 'قوانین ثبت اسناد', 'مدیریت داده‌ها', 'درباره برنامه']));
+        expect(labels, isNot(contains('ورودی و خروجی اکسل')));
         expect(labels, isNot(contains('انتقال از برنامه قبلی')));
         expect(labels, isNot(contains('سوابق ممیزی و صحت دفاتر')));
+        expect(labels, isNot(contains('پشتیبان‌گیری و بازیابی')));
         expect(labels, isNot(contains('درباره و مجوز')));
         for (var i = 0; i < tiles.evaluate().length; i++) {
           final tile = tiles.at(i);
@@ -225,10 +227,34 @@ void main() {
           await settle(tester);
           expect(tester.takeException(), isNull, reason: 'settings section $label');
           expect(tester.widget<SettingsNavTile>(tiles.at(i)).selected, isTrue, reason: label);
-          if (label == 'ورودی و خروجی اکسل') {
+          if (label == 'اطلاعات صرافی') {
+            for (final field in ['نام صرافی', 'ولایت / شهر', 'آدرس صرافی', 'نام کاربری', 'شماره تماس']) {
+              expect(find.byWidgetPredicate((w) => w is GfTextField && w.label == field), findsOneWidget,
+                  reason: field);
+            }
+            expect(find.text('اجازه منفی شدن موجودی نقد صندوق'), findsNothing);
+          }
+          if (label == 'قوانین ثبت اسناد') {
+            expect(find.text('اجازه منفی شدن موجودی نقد صندوق'), findsOneWidget);
+            expect(find.text('قفل روزهای بسته‌شده'), findsOneWidget);
+          }
+          if (label == 'ارزها و صندوق‌ها') {
+            expect(find.text('ارز جدید'), findsOneWidget);
+            expect(find.text('صندوق جدید'), findsOneWidget);
+            expect(find.text('صندوق اصلی'), findsWidgets);
+          }
+          if (label == 'مدیریت داده‌ها') {
             expect(find.text('ورودی اکسل'), findsWidgets);
             expect(find.text('خروجی اکسل'), findsWidgets);
             expect(find.text('پاک کردن همه داده‌ها'), findsWidgets);
+            expect(find.text('خروجی خودکار اکسل'), findsWidgets);
+            await tester.scrollUntilVisible(
+              find.text('سوابق خروجی خودکار اکسل'),
+              300,
+              scrollable: find.ancestor(of: find.text('خروجی خودکار اکسل').first, matching: find.byType(Scrollable)).first,
+            );
+            await settle(tester);
+            expect(tester.takeException(), isNull, reason: 'automatic export history');
           }
           if (label == 'ظاهر') {
             expect(find.text('تقویم نمایش'), findsNothing);

@@ -212,13 +212,13 @@ class _JournalPageState extends State<JournalPage> with RevisionReload {
                 ),
               ],
               columns: const [
-                LedgerColumn('تاریخ', width: 105),
-                LedgerColumn('شماره سند', width: 125),
-                LedgerColumn('نوع', width: 120),
-                LedgerColumn('مشتری', flex: 2),
-                LedgerColumn('جزئیات', flex: 4),
-                LedgerColumn('وضعیت', width: 105),
-                LedgerColumn('', width: LedgerRowMenu.width),
+                LedgerColumn.date(),
+                LedgerColumn.reference(),
+                LedgerColumn.text('نوع'),
+                LedgerColumn.primary('مشتری'),
+                LedgerColumn.description('جزئیات'),
+                LedgerColumn.status(),
+                LedgerColumn.actions(),
               ],
               rows: [
                 for (final t in _rows)

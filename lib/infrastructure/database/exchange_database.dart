@@ -5,6 +5,8 @@ import '../../domain/money/currency.dart';
 import '../../domain/security/permissions.dart';
 import 'schema_v1.dart';
 import 'schema_v2.dart';
+import 'schema_v3.dart';
+import 'schema_v4.dart';
 
 /// A versioned schema migration applied inside a single transaction.
 final class SchemaMigration {
@@ -34,6 +36,16 @@ abstract final class ExchangeDatabase {
     }),
     SchemaMigration(2, 'transaction_corrections', (txn, seed) async {
       for (final sql in schemaV2) {
+        await txn.execute(sql);
+      }
+    }),
+    SchemaMigration(3, 'excel_export_history', (txn, seed) async {
+      for (final sql in schemaV3) {
+        await txn.execute(sql);
+      }
+    }),
+    SchemaMigration(4, 'user_phone', (txn, seed) async {
+      for (final sql in schemaV4) {
         await txn.execute(sql);
       }
     }),
@@ -245,6 +257,9 @@ abstract final class ExchangeDatabase {
       'backup.auto_enabled': '1',
       'backup.auto_interval_hours': '24',
       'backup.retention_count': '30',
+      'excel.auto_enabled': '0',
+      'excel.auto_interval_hours': '24',
+      'excel.auto_retention_count': '30',
     };
     for (final s in settings.entries) {
       await txn.insert('application_settings', {

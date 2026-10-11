@@ -194,13 +194,13 @@ class _CustomerStatementPageState extends State<CustomerStatementPage> with Revi
                     emptyText: 'در این دوره معامله‌ای ثبت نشده است.',
                     emptyHint: _balances.isEmpty ? 'حساب این مشتری در همه ارزها تسویه است.' : null,
                     columns: const [
-                      LedgerColumn('تاریخ', width: 110),
-                      LedgerColumn('شماره سند', width: 130),
-                      LedgerColumn('نوع', flex: 2),
-                      LedgerColumn('شرح', flex: 3),
-                      LedgerColumn('بدهکار', flex: 2, numeric: true),
-                      LedgerColumn('بستانکار', flex: 2, numeric: true),
-                      LedgerColumn('مانده', flex: 2, numeric: true),
+                      LedgerColumn.date(),
+                      LedgerColumn.reference(),
+                      LedgerColumn.text('نوع'),
+                      LedgerColumn.description('شرح'),
+                      LedgerColumn.amount('بدهکار'),
+                      LedgerColumn.amount('بستانکار'),
+                      LedgerColumn.amount('مانده'),
                     ],
                     rows: [
                       if (st != null && c != null)

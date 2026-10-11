@@ -8,6 +8,7 @@ abstract final class AppConstants {
 
   static const String dataFolderName = 'data';
   static const String backupFolderName = 'backups';
+  static const String excelExportFolderName = 'excel_exports';
 
   /// UI-only preferences (SharedPreferences). Nothing financial is stored here.
   static const String prefSidebarCollapsed = 'sidebar_collapsed';

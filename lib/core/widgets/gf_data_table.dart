@@ -14,6 +14,31 @@ import 'gf_loader.dart';
 import 'gf_pagination_bar.dart';
 import 'gf_responsive.dart';
 
+/// Horizontal padding on both sides of every header and body cell, so an
+/// end-aligned amount never touches the start-aligned column next to it.
+const double kGfCellPadding = 8;
+
+/// Fixed widths shared by every table, so the same kind of data has the same
+/// width on every page and in every dialog.
+abstract final class GfColumnWidth {
+  static const double rowNumber = 52;
+  static const double date = 110;
+  static const double dateTime = 160;
+  static const double reference = 130;
+  static const double code = 100;
+  static const double status = 160;
+  static const double menu = 48;
+}
+
+/// Flex weights for variable-width columns.
+abstract final class GfColumnFlex {
+  static const int number = 1;
+  static const int text = 2;
+  static const int amount = 2;
+  static const int primary = 3;
+  static const int description = 4;
+}
+
 class GfTableColumn {
   const GfTableColumn({
     required this.label,
@@ -179,7 +204,7 @@ class _GfDataTableState extends State<GfDataTable> {
       selected: row.selected,
       children: [
         SizedBox(
-          width: 52,
+          width: GfColumnWidth.rowNumber,
           child: Align(
             alignment: AlignmentDirectional.center,
             child: Text(
@@ -232,7 +257,7 @@ class _GfDataTableState extends State<GfDataTable> {
         ? <GfTableColumn>[
             GfTableColumn(
               label: 'common.rowNumber'.tr(),
-              width: 52,
+              width: GfColumnWidth.rowNumber,
               alignment: AlignmentDirectional.center,
             ),
             ...widget.columns,
@@ -502,9 +527,12 @@ class _Header extends StatelessWidget {
   }
 
   Widget _cell(GfTableColumn column, Widget child) {
-    final aligned = Align(
-      alignment: column.alignment,
-      child: SizedBox(width: double.infinity, child: child),
+    final aligned = Padding(
+      padding: const EdgeInsets.symmetric(horizontal: kGfCellPadding),
+      child: Align(
+        alignment: column.alignment,
+        child: SizedBox(width: double.infinity, child: child),
+      ),
     );
     if (column.width != null) {
       return SizedBox(width: column.width, child: aligned);
@@ -620,15 +648,7 @@ class _GfTableRowState extends State<GfTableRow> {
             padding: const EdgeInsets.symmetric(horizontal: 16),
             decoration: BoxDecoration(
               color: _hover || _focused ? AppColors.rowHover : base,
-              border: Border(
-                bottom: BorderSide(color: AppColors.divider),
-                left: widget.selected || _focused
-                    ? BorderSide(
-                        color: AppColors.primary,
-                        width: _focused ? 3 : 3,
-                      )
-                    : BorderSide.none,
-              ),
+              border: Border(bottom: BorderSide(color: AppColors.divider)),
               boxShadow: _focused
                   ? [
                       BoxShadow(
@@ -638,6 +658,15 @@ class _GfTableRowState extends State<GfTableRow> {
                     ]
                   : null,
             ),
+            // Painted on top so the accent never shifts cells out of line
+            // with the header.
+            foregroundDecoration: widget.selected || _focused
+                ? BoxDecoration(
+                    border: BorderDirectional(
+                      start: BorderSide(color: AppColors.primary, width: 3),
+                    ),
+                  )
+                : null,
             child: Row(
               textDirection: Directionality.of(context),
               children: [

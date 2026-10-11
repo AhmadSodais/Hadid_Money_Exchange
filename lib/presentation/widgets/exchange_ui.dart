@@ -1,3 +1,4 @@
+import 'package:easy_localization/easy_localization.dart' hide TextDirection;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -63,8 +64,81 @@ mixin RevisionReload<T extends StatefulWidget> on State<T> {
 
 // ------------------------------------------------------------------ table
 
+/// Table column. Use the named constructors so the same kind of data gets the
+/// same width and alignment on every page.
+///
+/// Columns are always ordered from the start (right) edge as:
+///  1. row number (added by the table)
+///  2. date / time — [LedgerColumn.date], [LedgerColumn.dateTime]
+///  3. identifier — [LedgerColumn.reference], [LedgerColumn.code]
+///  4. type / operation — [LedgerColumn.text]
+///  5. main subject: customer, account, name, or the currency when the row
+///     is about a currency — [LedgerColumn.primary]
+///  6. secondary text (a qualifying currency, phone, file…), then free text —
+///     [LedgerColumn.text], [LedgerColumn.description]
+///  7. counts, then amounts in calculation order (opening → in → out →
+///     closing, debit → credit → balance, buy → sell, expected → counted →
+///     difference) — [LedgerColumn.number], [LedgerColumn.amount]
+///  8. status — [LedgerColumn.status]
+///  9. row actions — [LedgerColumn.actions]
 class LedgerColumn {
   const LedgerColumn(this.label, {this.flex = 1, this.numeric = false, this.width});
+
+  const LedgerColumn.date([this.label = 'تاریخ'])
+      : flex = 1,
+        numeric = false,
+        width = GfColumnWidth.date;
+
+  const LedgerColumn.dateTime([this.label = 'زمان'])
+      : flex = 1,
+        numeric = false,
+        width = GfColumnWidth.dateTime;
+
+  const LedgerColumn.reference([this.label = 'شماره سند'])
+      : flex = 1,
+        numeric = false,
+        width = GfColumnWidth.reference;
+
+  const LedgerColumn.code([this.label = 'کد'])
+      : flex = 1,
+        numeric = false,
+        width = GfColumnWidth.code;
+
+  const LedgerColumn.primary(this.label)
+      : flex = GfColumnFlex.primary,
+        numeric = false,
+        width = null;
+
+  const LedgerColumn.text(this.label)
+      : flex = GfColumnFlex.text,
+        numeric = false,
+        width = null;
+
+  const LedgerColumn.description(this.label)
+      : flex = GfColumnFlex.description,
+        numeric = false,
+        width = null;
+
+  /// Short integers: counts, decimal places, sizes.
+  const LedgerColumn.number(this.label)
+      : flex = GfColumnFlex.number,
+        numeric = true,
+        width = null;
+
+  const LedgerColumn.amount(this.label)
+      : flex = GfColumnFlex.amount,
+        numeric = true,
+        width = null;
+
+  const LedgerColumn.status([this.label = 'وضعیت'])
+      : flex = 1,
+        numeric = false,
+        width = GfColumnWidth.status;
+
+  const LedgerColumn.actions({this.width = GfColumnWidth.menu})
+      : label = '',
+        flex = 1,
+        numeric = false;
 
   final String label;
   final int flex;
@@ -80,7 +154,7 @@ class LedgerColumn {
 
   Widget cell(Widget child) {
     final aligned = Padding(
-      padding: const EdgeInsetsDirectional.only(end: 8),
+      padding: const EdgeInsets.symmetric(horizontal: kGfCellPadding),
       child: Align(
         alignment: numeric ? AlignmentDirectional.centerEnd : AlignmentDirectional.centerStart,
         child: DefaultTextStyle.merge(
@@ -101,7 +175,7 @@ class LedgerRowMenu extends StatelessWidget {
   final List<PopupMenuEntry<String>> items;
   final ValueChanged<String> onSelected;
 
-  static const double width = 48;
+  static const double width = GfColumnWidth.menu;
 
   @override
   Widget build(BuildContext context) {
@@ -121,7 +195,8 @@ class LedgerRowMenu extends StatelessWidget {
 /// Without [onPageChanged] the rows are paginated client-side. With
 /// [shrinkWrap] the table sizes to its rows (no pagination) for small
 /// embedded lists; adding [fixedRows] keeps it at a constant height of that
-/// many rows and paginates client-side instead.
+/// many rows and paginates client-side instead. [totalRow] (shrink-wrapped
+/// tables only) is appended after the data rows without a row number.
 class LedgerTable extends StatelessWidget {
   const LedgerTable({
     super.key,
@@ -145,10 +220,12 @@ class LedgerTable extends StatelessWidget {
     this.onPageSizeChanged,
     this.showRowNumbers = true,
     this.fixedRows,
-  });
+    this.totalRow,
+  }) : assert(totalRow == null || shrinkWrap);
 
   final List<LedgerColumn> columns;
   final List<List<Widget>> rows;
+  final List<Widget>? totalRow;
   final ValueChanged<int>? onTapRow;
   final String emptyText;
   final String? emptyHint;
@@ -168,14 +245,15 @@ class LedgerTable extends StatelessWidget {
   final bool showRowNumbers;
   final int? fixedRows;
 
-  Widget _row(BuildContext context, int i) {
-    final cells = rows[i];
-    return GfTableRow(
-      onTap: onTapRow == null ? null : () => onTapRow!(i),
-      children: [
+  List<Widget> _cells(List<Widget> cells) => [
         for (var c = 0; c < columns.length; c++)
           columns[c].cell(c < cells.length ? cells[c] : const SizedBox.shrink()),
-      ],
+      ];
+
+  Widget _row(BuildContext context, int i) {
+    return GfTableRow(
+      onTap: onTapRow == null ? null : () => onTapRow!(i),
+      children: _cells(rows[i]),
     );
   }
 
@@ -187,6 +265,7 @@ class LedgerTable extends StatelessWidget {
         columns: columns,
         rowCount: rows.length,
         rowBuilder: _row,
+        totalCells: totalRow == null ? null : _cells(totalRow!),
         empty: empty,
         title: title,
         subtitle: subtitle,
@@ -233,6 +312,7 @@ class _CompactLedgerTable extends StatefulWidget {
     required this.empty,
     required this.showRowNumbers,
     required this.itemLabel,
+    this.totalCells,
     this.title,
     this.subtitle,
     this.actions = const [],
@@ -243,6 +323,7 @@ class _CompactLedgerTable extends StatefulWidget {
   final List<LedgerColumn> columns;
   final int rowCount;
   final Widget Function(BuildContext, int) rowBuilder;
+  final List<Widget>? totalCells;
   final Widget empty;
   final bool showRowNumbers;
   final String itemLabel;
@@ -257,9 +338,18 @@ class _CompactLedgerTable extends StatefulWidget {
 }
 
 class _CompactLedgerTableState extends State<_CompactLedgerTable> {
-  static const double _numberWidth = 52;
+  static const double _numberWidth = GfColumnWidth.rowNumber;
 
   int _page = 1;
+
+  Widget _total(List<Widget> cells) {
+    return GfTableRow(
+      children: [
+        if (widget.showRowNumbers) const SizedBox(width: _numberWidth),
+        ...cells,
+      ],
+    );
+  }
 
   Widget _numbered(BuildContext context, int i) {
     final row = widget.rowBuilder(context, i) as GfTableRow;
@@ -300,7 +390,7 @@ class _CompactLedgerTableState extends State<_CompactLedgerTable> {
         style: headerStyle,
       );
       final padded = Padding(
-        padding: const EdgeInsetsDirectional.only(end: 8),
+        padding: const EdgeInsets.symmetric(horizontal: kGfCellPadding),
         child: SizedBox(width: double.infinity, child: text),
       );
       return c.width != null ? SizedBox(width: c.width, child: padded) : Expanded(flex: c.flex, child: padded);
@@ -313,6 +403,7 @@ class _CompactLedgerTableState extends State<_CompactLedgerTable> {
     final first = fixedRows == null ? 0 : (page - 1) * fixedRows;
     final last = fixedRows == null ? rowCount : (first + fixedRows).clamp(0, rowCount);
 
+    final totalCells = widget.totalCells;
     Widget body;
     if (fixedRows == null) {
       body = rowCount == 0
@@ -320,7 +411,10 @@ class _CompactLedgerTableState extends State<_CompactLedgerTable> {
           : Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [for (var i = 0; i < rowCount; i++) _numbered(context, i)],
+              children: [
+                for (var i = 0; i < rowCount; i++) _numbered(context, i),
+                if (totalCells != null) _total(totalCells),
+              ],
             );
     } else {
       // The empty state also takes the pagination footer's slot.
@@ -341,7 +435,7 @@ class _CompactLedgerTableState extends State<_CompactLedgerTable> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Container(
-          height: 48,
+          height: GfPagination.tableHeaderHeight,
           padding: const EdgeInsets.symmetric(horizontal: 16),
           color: AppColors.tableHeader,
           child: Row(
@@ -349,7 +443,7 @@ class _CompactLedgerTableState extends State<_CompactLedgerTable> {
               if (widget.showRowNumbers)
                 SizedBox(
                   width: _numberWidth,
-                  child: Text('#', textAlign: TextAlign.center, style: headerStyle),
+                  child: Text('common.rowNumber'.tr(), textAlign: TextAlign.center, style: headerStyle),
                 ),
               for (final c in widget.columns) headerCell(c),
             ],

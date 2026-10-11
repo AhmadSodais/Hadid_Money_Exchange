@@ -18,6 +18,7 @@ Every rule the system enforces that the master prompt did not fix exactly is lis
 | B10 | Reconciliation difference | Stored only. Corrected by an explicit cash adjustment to 5200 with a reason | – |
 | B11 | Reversal | Whole transaction, once, with a reason, dated today by default; the original keeps its date and is marked `reversed` | – |
 | B12 | Opening balances | One active opening per drawer+currency and per customer+currency. To change it, edit or delete it from the journal (both post a reversal; history is kept) | – |
+| B14 | Cash drawers (صندوق‌ها) | Settings → «ارزها و صندوق‌ها». Each new drawer gets its own cash account under 1100 (`1102`, `1103`, …) and keeps separate cash, opening capital, and daily reconciliation per currency. Names are unique. A drawer can be renamed at any time; it can be deactivated only when its cash is zero in every currency, and at least one drawer must stay active. Inactive drawers disappear from the drawer pickers and reject postings | Settings |
 | B13 | Deleting | Nothing financial is deleted. Customers are deactivated (or anonymized); currencies are deactivated | – |
 
 ## Security and access
@@ -38,9 +39,11 @@ Every rule the system enforces that the master prompt did not fix exactly is lis
 | D1 | Language | Dari/Persian, right-to-left. UI strings are written in Persian directly in the widgets (the old multi-language JSON files belonged to the retail app) |
 | D2 | Calendar | Solar Hijri (شمسی) only: every date is shown and entered in Solar Hijri, and the Excel file and backup file names use it too. There is no calendar setting. Inside SQLite, dates stay ISO so that sorting, ranges, and closed-day checks remain exact |
 | D3 | Numbers | Western digits with thousands separators; Excel cells hold exact integer minor units or canonical decimal text, never floats |
-| D4 | Excel input/output | Only in Settings → «ورودی و خروجی اکسل»; pages have no Excel button. Output writes every table to one workbook (credentials excluded). Input never merges: it builds a separate database from the workbook, requires the ledger invariants and the exported fingerprint to match, takes a safety backup, swaps it in, and rolls back on any failure |
+| D4 | Excel input/output | Only in Settings → «مدیریت داده‌ها»; pages have no Excel button. Output writes every table to one workbook (credentials excluded). Input never merges: it builds a separate database from the workbook, requires the ledger invariants and the exported fingerprint to match, takes a safety backup, swaps it in, and rolls back on any failure |
 | D6 | Clear all data | Settings → «پاک کردن همه داده‌ها», typed confirmation, `backup.restore` permission. Swaps in a fresh database that keeps exchange information, posting policies, and currency definitions; a safety backup is taken first and can be restored |
-| D7 | Hidden settings | «انتقال از برنامه قبلی» and «سوابق ممیزی و صحت دفاتر» are hidden from the settings navigation (code kept). The audit log is still written |
+| D7 | Hidden settings | «انتقال از برنامه قبلی», «سوابق ممیزی و صحت دفاتر», and «پشتیبان‌گیری و بازیابی» (automatic backup, backup history, and the Excel file log) are hidden from the settings navigation (code kept). Automatic backup still runs at startup. The audit log is still written |
+| D8 | Automatic Excel export | Settings → «مدیریت داده‌ها» → «خروجی خودکار اکسل». Off by default. When on, the app checks at startup and every 15 minutes while open, and writes a full workbook (`hadid_auto_<Solar date>_<time>.xlsx`) when the last attempt is older than the interval (default 24 hours). Folder is selectable (default `%APPDATA%\Hadid\Hadid Money Exchange\excel_exports\`). Keeps the newest 30 successful files; only files listed in the history are ever deleted. Every attempt, including failures, is listed with its full path in «سوابق خروجی خودکار اکسل» |
+| D9 | Exchange information | Settings → «اطلاعات صرافی» holds only the exchange's name, province/city, and address, plus the current user's display name (shown in the sidebar) and phone number. The internal login username is not changed. Posting rules (back-dating limit, negative cash, closed-day lock) live in their own section «قوانین ثبت اسناد». All of these survive clear-all |
 | D5 | Backups | Automatic backup at startup when the last one is older than 24 hours; keep the newest 30 automatic backups. Manual, pre-restore, and pre-migration backups are never pruned automatically |
 
 ## Legacy migration
@@ -63,4 +66,4 @@ Every rule the system enforces that the master prompt did not fix exactly is lis
 | Q3 | Will staff log in with their own accounts? If yes, which role does each person get? | Single owner plus app lock |
 | Q4 | Is a licensing scheme required, and how should it work offline? | None; data is never blocked |
 | Q5 | For customers flagged `customer.exchangeOnAccount`, should their balances be corrected after migration? | Corrected only by an explicit customer adjustment with a reason |
-| Q6 | Is more than one cash drawer needed? | One drawer, `صندوق اصلی`; the schema supports more |
+| Q6 | Is more than one cash drawer needed? | Answered: drawers are managed in Settings → «ارزها و صندوق‌ها» (see B14) |

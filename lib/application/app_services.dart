@@ -1,3 +1,4 @@
+import 'package:path/path.dart' as p;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import '../infrastructure/backup/backup_service.dart';
@@ -15,7 +16,7 @@ import 'security_service.dart';
 
 /// Composition root: one database connection and every service built on it.
 final class AppServices {
-  AppServices._(this.db, this.databasePath, this.backupDirectory, this.events,
+  AppServices._(this.db, this.databasePath, this.backupDirectory, this.excelExportDirectory, this.events,
       {DateTime Function()? clock})
       : _clock = clock {
     rebind(db);
@@ -30,15 +31,26 @@ final class AppServices {
   static Future<AppServices> open({
     required String databasePath,
     required String backupDirectory,
+    String? excelExportDirectory,
     DateTime Function()? clock,
   }) async {
     final db = await ExchangeDatabase.open(databasePath);
-    return AppServices._(db, databasePath, backupDirectory, LedgerEvents(), clock: clock);
+    return AppServices._(
+      db,
+      databasePath,
+      backupDirectory,
+      excelExportDirectory ?? p.join(p.dirname(backupDirectory), 'excel_exports'),
+      LedgerEvents(),
+      clock: clock,
+    );
   }
 
   Database db;
   final String databasePath;
   final String backupDirectory;
+
+  /// Default folder for automatic Excel exports when none is configured.
+  final String excelExportDirectory;
   final LedgerEvents events;
 
   late CatalogService catalog;
@@ -63,7 +75,7 @@ final class AppServices {
     rates = RateService(db, catalog, events);
     queries = LedgerQueries(db);
     reconciliation = ReconciliationService(db, posting, events);
-    security = SecurityService(db);
+    security = SecurityService(db, events);
   }
 
   Future<void> close() async {

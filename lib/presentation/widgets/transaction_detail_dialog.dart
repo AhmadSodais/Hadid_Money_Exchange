@@ -182,10 +182,10 @@ class _TransactionDetailDialogState extends State<TransactionDetailDialog> {
         OrderDetailDialogStyle.smallSpace,
         OrderDetailLinesTable(
           columns: const [
-            OrderDetailColumn('حساب', flex: 4),
-            OrderDetailColumn('ارز', flex: 1),
-            OrderDetailColumn('بدهکار', flex: 2, numeric: true),
-            OrderDetailColumn('بستانکار', flex: 2, numeric: true),
+            LedgerColumn.primary('حساب'),
+            LedgerColumn.text('ارز'),
+            LedgerColumn.amount('بدهکار'),
+            LedgerColumn.amount('بستانکار'),
           ],
           rows: [
             for (final l in tx.lines)

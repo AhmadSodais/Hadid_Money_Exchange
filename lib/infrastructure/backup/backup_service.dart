@@ -286,6 +286,9 @@ final class BackupService {
       final history = keepBackupHistory
           ? await _app.db.query('backup_history', orderBy: 'id')
           : const <Map<String, Object?>>[];
+      final excelHistory = keepBackupHistory
+          ? await _app.db.query('excel_export_history', orderBy: 'id')
+          : const <Map<String, Object?>>[];
 
       final live = _app.databasePath;
       final previous = '$live.pre-restore-${DateTime.now().millisecondsSinceEpoch}';
@@ -307,6 +310,9 @@ final class BackupService {
         await db.transaction((txn) async {
           for (final row in history) {
             await txn.insert('backup_history', {...row}..remove('id'));
+          }
+          for (final row in excelHistory) {
+            await txn.insert('excel_export_history', {...row}..remove('id'));
           }
           await txn.insert('backup_history', {
             'kind': 'pre_restore',

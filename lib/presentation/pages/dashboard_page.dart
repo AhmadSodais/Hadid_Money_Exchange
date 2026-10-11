@@ -16,6 +16,8 @@ import '../format/money_format.dart';
 import '../session/app_session.dart';
 import '../widgets/app_shell.dart';
 import '../widgets/exchange_ui.dart';
+import '../widgets/full_screen_toggle.dart';
+import '../widgets/theme_mode_toggle.dart';
 
 class DashboardPage extends StatefulWidget {
   const DashboardPage({super.key});
@@ -61,17 +63,9 @@ class _DashboardPageState extends State<DashboardPage> with RevisionReload {
     return PageScaffold(
       title: 'داشبورد',
       subtitle: 'امروز: ${DateFormatFa.business(BusinessDate.today())}',
-      actions: [
-        GfPrimaryButton(
-          label: 'خرید و فروش ارز',
-          icon: Icons.currency_exchange,
-          onPressed: () => context.go(AppRoutes.exchange),
-        ),
-        GfSecondaryButton(
-          label: 'رسید و برد',
-          icon: Icons.swap_vert,
-          onPressed: () => context.go(AppRoutes.cash),
-        ),
+      actions: const [
+        FullScreenToggle(),
+        ThemeModeToggle(),
       ],
       padBody: false,
       body: _loading
@@ -90,7 +84,7 @@ class _DashboardPageState extends State<DashboardPage> with RevisionReload {
                   const Padding(
                     padding: EdgeInsets.only(bottom: AppSpacing.md),
                     child: InfoBanner(
-                      'هنوز هیچ نسخه پشتیبان تهیه نشده است. از تنظیمات › پشتیبان‌گیری یک نسخه تهیه کنید.',
+                      'هنوز هیچ نسخه پشتیبان تهیه نشده است.',
                       tone: BannerTone.warning,
                     ),
                   ),
@@ -213,10 +207,10 @@ class _TodayActivity extends StatelessWidget {
       ],
       emptyText: 'امروز معامله‌ای ثبت نشده است.',
       columns: const [
-        LedgerColumn('نوع', flex: 2),
-        LedgerColumn('ارز'),
-        LedgerColumn('تعداد'),
-        LedgerColumn('مجموع', flex: 2, numeric: true),
+        LedgerColumn.text('نوع'),
+        LedgerColumn.text('ارز'),
+        LedgerColumn.number('تعداد'),
+        LedgerColumn.amount('مجموع'),
       ],
       rows: [
         for (final r in rows)
@@ -255,9 +249,9 @@ class _RatesPreview extends StatelessWidget {
       ],
       emptyText: 'هنوز نرخی ثبت نشده است.',
       columns: const [
-        LedgerColumn('جفت ارز', flex: 2),
-        LedgerColumn('خرید', numeric: true),
-        LedgerColumn('فروش', numeric: true),
+        LedgerColumn.primary('جفت ارز'),
+        LedgerColumn.amount('خرید'),
+        LedgerColumn.amount('فروش'),
       ],
       rows: [
         for (final r in rates)

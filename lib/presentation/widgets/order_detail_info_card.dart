@@ -1,6 +1,9 @@
+import 'package:easy_localization/easy_localization.dart' hide TextDirection;
 import 'package:flutter/material.dart';
 
 import '../../core/theme/app_typography.dart';
+import '../../core/widgets/gf_data_table.dart';
+import 'exchange_ui.dart';
 import 'order_detail_dialog_style.dart';
 
 /// Read-only detail dialog frame: icon header with close, scrolling body,
@@ -493,22 +496,8 @@ class OrderDetailStat {
   final Color? color;
 }
 
-/// Column definition for [OrderDetailLinesTable].
-class OrderDetailColumn {
-  const OrderDetailColumn(
-    this.label, {
-    this.flex = 1,
-    this.width,
-    this.numeric = false,
-  });
-
-  final String label;
-  final int flex;
-  final double? width;
-  final bool numeric;
-}
-
-/// Lines table in the detail dialog style (header strip + divided rows).
+/// Lines table in the detail dialog style (header strip + divided rows),
+/// using the same [LedgerColumn] widths and cell padding as page tables.
 class OrderDetailLinesTable extends StatelessWidget {
   const OrderDetailLinesTable({
     super.key,
@@ -518,23 +507,19 @@ class OrderDetailLinesTable extends StatelessWidget {
     this.showIndex = true,
   });
 
-  final List<OrderDetailColumn> columns;
+  final List<LedgerColumn> columns;
   final List<List<Widget>> rows;
   final String emptyText;
   final bool showIndex;
 
+  static const _rowPadding = EdgeInsets.symmetric(horizontal: 16, vertical: 10);
+
   @override
   Widget build(BuildContext context) {
-    Widget cell(OrderDetailColumn c, Widget child) {
-      final aligned = Align(
-        alignment: c.numeric
-            ? AlignmentDirectional.centerEnd
-            : AlignmentDirectional.centerStart,
-        child: child,
-      );
-      if (c.width != null) return SizedBox(width: c.width, child: aligned);
-      return Expanded(flex: c.flex, child: aligned);
-    }
+    Widget index(String text, TextStyle style) => SizedBox(
+          width: GfColumnWidth.rowNumber,
+          child: Text(text, textAlign: TextAlign.center, style: style),
+        );
 
     return Container(
       decoration: OrderDetailDialogStyle.card,
@@ -543,11 +528,12 @@ class OrderDetailLinesTable extends StatelessWidget {
         children: [
           Container(
             color: OrderDetailDialogStyle.tableHeaderBg,
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            padding: _rowPadding,
             child: Row(
               children: [
-                if (showIndex) SizedBox(width: 28, child: _h('#')),
-                for (final c in columns) cell(c, _h(c.label)),
+                if (showIndex) index('common.rowNumber'.tr(), _headerStyle),
+                for (final c in columns)
+                  c.cell(Text(c.label, textAlign: c.numeric ? TextAlign.end : TextAlign.start, style: _headerStyle)),
               ],
             ),
           ),
@@ -570,22 +556,16 @@ class OrderDetailLinesTable extends StatelessWidget {
                   color: OrderDetailDialogStyle.border,
                 ),
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                padding: _rowPadding,
                 child: Row(
                   children: [
                     if (showIndex)
-                      SizedBox(
-                        width: 28,
-                        child: Text(
-                          '${i + 1}',
-                          style: AppTypography.caption.copyWith(
-                            color: OrderDetailDialogStyle.muted,
-                          ),
-                        ),
+                      index(
+                        '${i + 1}',
+                        AppTypography.caption.copyWith(color: OrderDetailDialogStyle.muted),
                       ),
                     for (var c = 0; c < columns.length; c++)
-                      cell(
-                        columns[c],
+                      columns[c].cell(
                         DefaultTextStyle.merge(
                           style: AppTypography.body.copyWith(
                             color: OrderDetailDialogStyle.navy,
@@ -603,14 +583,9 @@ class OrderDetailLinesTable extends StatelessWidget {
     );
   }
 
-  Widget _h(String text) {
-    return Text(
-      text,
-      style: AppTypography.caption.copyWith(
+  static TextStyle get _headerStyle => AppTypography.caption.copyWith(
         color: OrderDetailDialogStyle.muted,
         fontWeight: FontWeight.w600,
         fontSize: 12,
-      ),
-    );
-  }
+      );
 }

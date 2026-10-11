@@ -8,6 +8,7 @@ import 'package:path/path.dart' as p;
 import 'package:provider/provider.dart';
 
 import '../../application/audit_writer.dart';
+import '../../application/catalog_service.dart';
 import '../../application/posting_service.dart';
 import '../../application/read_models.dart';
 import '../../core/constants/app_constants.dart';
@@ -35,10 +36,22 @@ import '../widgets/settings_kit.dart';
 
 part 'settings_about_section.dart';
 
-enum _Section { policies, openingCash, currencies, appLock, backup, data, legacyImport, audit, appearance, about }
+enum _Section {
+  exchangeInfo,
+  postingRules,
+  openingCash,
+  currencies,
+  appLock,
+  backup,
+  data,
+  legacyImport,
+  audit,
+  appearance,
+  about,
+}
 
 /// Kept in code but not offered in the settings navigation.
-const _hiddenSections = {_Section.legacyImport, _Section.audit};
+const _hiddenSections = {_Section.legacyImport, _Section.audit, _Section.backup};
 
 Future<void> _openPath(String path) async {
   try {
@@ -59,12 +72,13 @@ class SettingsPage extends StatefulWidget {
 
 class _SettingsPageState extends State<SettingsPage> {
   static const _nav = <SettingsNavEntry<_Section>>[
-    SettingsNavEntry(_Section.policies, Icons.storefront_outlined, 'اطلاعات صرافی'),
+    SettingsNavEntry(_Section.exchangeInfo, Icons.storefront_outlined, 'اطلاعات صرافی'),
+    SettingsNavEntry(_Section.postingRules, Icons.rule_outlined, 'قوانین ثبت اسناد'),
     SettingsNavEntry(_Section.openingCash, Icons.account_balance_wallet_outlined, 'سرمایه اولیه صندوق'),
-    SettingsNavEntry(_Section.currencies, Icons.currency_exchange, 'ارزها'),
+    SettingsNavEntry(_Section.currencies, Icons.currency_exchange, 'ارزها و صندوق‌ها'),
     SettingsNavEntry(_Section.appLock, Icons.lock_outline, 'امنیت برنامه'),
     SettingsNavEntry(_Section.backup, Icons.folder_outlined, 'پشتیبان‌گیری و بازیابی'),
-    SettingsNavEntry(_Section.data, Icons.table_view_outlined, 'ورودی و خروجی اکسل'),
+    SettingsNavEntry(_Section.data, Icons.table_view_outlined, 'مدیریت داده‌ها'),
     SettingsNavEntry(_Section.legacyImport, Icons.move_down, 'انتقال از برنامه قبلی'),
     SettingsNavEntry(_Section.audit, Icons.fact_check_outlined, 'سوابق ممیزی و صحت دفاتر'),
     SettingsNavEntry(_Section.appearance, Icons.palette_outlined, 'ظاهر'),
@@ -84,7 +98,7 @@ class _SettingsPageState extends State<SettingsPage> {
 
   bool _visible(AppSession s, _Section section) => switch (section) {
         _ when _hiddenSections.contains(section) => false,
-        _Section.policies => s.can(Permissions.settingsManage),
+        _Section.exchangeInfo || _Section.postingRules => s.can(Permissions.settingsManage),
         _Section.data => s.can(Permissions.backupCreate) || s.can(Permissions.backupRestore),
         _Section.openingCash => s.can(Permissions.openingBalancesPost),
         _Section.legacyImport => s.can(Permissions.openingBalancesPost) && s.can(Permissions.backupRestore),
@@ -116,7 +130,7 @@ class _SettingsPageState extends State<SettingsPage> {
 
     return PageScaffold(
       title: 'تنظیمات',
-      subtitle: 'اطلاعات صرافی، ارزها، امنیت، پشتیبان‌گیری، ورودی و خروجی اکسل و ظاهر برنامه',
+      subtitle: 'اطلاعات صرافی، قوانین ثبت، ارزها و صندوق‌ها، امنیت، مدیریت داده‌ها و ظاهر برنامه',
       searchController: _search,
       searchHint: 'جستجو در تنظیمات...',
       onSearch: _onSearch,
@@ -165,16 +179,22 @@ class _SettingsContent extends StatelessWidget {
   Widget build(BuildContext context) {
     final s = context.watch<AppSession>();
     final sections = switch (selected) {
-      _Section.policies => [_PoliciesCard(metrics: metrics)],
+      _Section.exchangeInfo => [_ExchangeInfoCard(metrics: metrics)],
+      _Section.postingRules => [_PostingRulesCard(metrics: metrics)],
       _Section.openingCash => [_OpeningCashCard(metrics: metrics)],
-      _Section.currencies => [const SizedBox(height: 560, child: _CurrenciesTable())],
+      _Section.currencies => [const _CurrenciesTable(), const _DrawersTable()],
       _Section.appLock => [AppLockSettingsCard(padding: metrics.cardPadding)],
       _Section.backup => [
           _BackupCard(metrics: metrics),
           if (s.can(Permissions.settingsManage)) _AutoBackupCard(metrics: metrics),
           const SizedBox(height: 460, child: _BackupHistoryTable()),
+          const SizedBox(height: 460, child: _ExcelFileLogTable()),
         ],
-      _Section.data => [_DataTransferCard(metrics: metrics)],
+      _Section.data => [
+          _DataTransferCard(metrics: metrics),
+          if (s.can(Permissions.settingsManage)) _AutoExcelExportCard(metrics: metrics),
+          const SizedBox(height: 460, child: _AutoExcelExportHistoryTable()),
+        ],
       _Section.legacyImport => [LegacyImportCard(metrics: metrics)],
       _Section.audit => [
           _IntegrityCard(metrics: metrics),
@@ -193,19 +213,175 @@ class _SettingsContent extends StatelessWidget {
   }
 }
 
-// --------------------------------------------------------------- policies
+// ---------------------------------------------------------- exchange info
 
-class _PoliciesCard extends StatefulWidget {
-  const _PoliciesCard({required this.metrics});
+class _ExchangeInfoCard extends StatefulWidget {
+  const _ExchangeInfoCard({required this.metrics});
 
   final SettingsMetrics metrics;
 
   @override
-  State<_PoliciesCard> createState() => _PoliciesCardState();
+  State<_ExchangeInfoCard> createState() => _ExchangeInfoCardState();
 }
 
-class _PoliciesCardState extends State<_PoliciesCard> with RevisionReload {
+class _ExchangeInfoCardState extends State<_ExchangeInfoCard> with RevisionReload {
   final _name = TextEditingController();
+  final _city = TextEditingController();
+  final _address = TextEditingController();
+  final _userName = TextEditingController();
+  final _phone = TextEditingController();
+  bool _loaded = false;
+  bool _saving = false;
+
+  @override
+  void dispose() {
+    _name.dispose();
+    _city.dispose();
+    _address.dispose();
+    _userName.dispose();
+    _phone.dispose();
+    super.dispose();
+  }
+
+  @override
+  Future<void> reload() async {
+    final services = session.services;
+    final c = services.catalog;
+    final name = await c.setting('business.name');
+    final city = await c.setting('business.city');
+    final address = await c.setting('business.address');
+    final profile = await services.security.profile(session.actor.userId);
+    if (!mounted) return;
+    setState(() {
+      _name.text = name ?? '';
+      _city.text = city ?? '';
+      _address.text = address ?? '';
+      _userName.text = profile.displayName;
+      _phone.text = profile.phone ?? '';
+      _loaded = true;
+    });
+  }
+
+  Future<void> _save() async {
+    if (_name.text.trim().isEmpty) {
+      GfToast.error(context, 'نام صرافی را وارد کنید.');
+      return;
+    }
+    if (_userName.text.trim().isEmpty) {
+      GfToast.error(context, 'نام کاربری را وارد کنید.');
+      return;
+    }
+    final s = context.read<AppSession>();
+    final c = s.services.catalog;
+    setState(() => _saving = true);
+    await runAction(context, () async {
+      await s.services.security.updateProfile(
+        s.actor.userId,
+        displayName: _userName.text,
+        phone: _phone.text,
+        actor: s.actor,
+      );
+      await c.putSetting('business.name', _name.text.trim(), s.actor);
+      await c.putSetting('business.city', _city.text.trim(), s.actor);
+      await c.putSetting('business.address', _address.text.trim(), s.actor);
+    }, success: 'اطلاعات صرافی ذخیره شد.');
+    if (mounted) setState(() => _saving = false);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final m = widget.metrics;
+    return SettingsSectionCard(
+      icon: Icons.storefront_outlined,
+      title: 'اطلاعات صرافی',
+      padding: m.cardPadding,
+      footer: Text(
+        'نام صرافی و نشانی در گزارش‌ها و رسیدها استفاده می‌شود. نام کاربری در منوی کناری نمایش داده می‌شود.',
+        style: AppTypography.caption.copyWith(color: AppColors.textSecondary),
+      ),
+      actions: [
+        GfSecondaryButton(label: 'انصراف', icon: Icons.close, onPressed: _saving ? null : reload),
+        GfPrimaryButton(
+          label: 'ذخیره تغییرات',
+          icon: Icons.save_outlined,
+          isLoading: _saving,
+          onPressed: _loaded && !_saving ? _save : null,
+        ),
+      ],
+      child: !_loaded
+          ? const SizedBox(height: 120, child: GfPageLoader())
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                SettingsTransferGroup(
+                  title: 'مشخصات صرافی',
+                  children: [
+                    SettingsFormRow(
+                      gap: m.fieldGap,
+                      left: GfTextField(
+                        label: 'نام صرافی',
+                        prefixIcon: Icons.storefront_outlined,
+                        controller: _name,
+                        required: true,
+                      ),
+                      right: GfTextField(
+                        label: 'ولایت / شهر',
+                        hint: 'مثلاً کابل',
+                        prefixIcon: Icons.location_city_outlined,
+                        controller: _city,
+                      ),
+                    ),
+                    SizedBox(height: m.fieldGap),
+                    GfTextField(
+                      label: 'آدرس صرافی',
+                      hint: 'ناحیه، سرک، مارکیت، منزل و شماره دکان',
+                      prefixIcon: Icons.place_outlined,
+                      controller: _address,
+                      minLines: 2,
+                      maxLines: 3,
+                    ),
+                  ],
+                ),
+                SizedBox(height: m.fieldGap * 1.5),
+                SettingsTransferGroup(
+                  title: 'مشخصات کاربر',
+                  children: [
+                    SettingsFormRow(
+                      gap: m.fieldGap,
+                      left: GfTextField(
+                        label: 'نام کاربری',
+                        prefixIcon: Icons.person_outline,
+                        controller: _userName,
+                        required: true,
+                      ),
+                      right: GfTextField(
+                        label: 'شماره تماس',
+                        hint: 'مثلاً 0700123456',
+                        prefixIcon: Icons.phone_outlined,
+                        controller: _phone,
+                        keyboardType: TextInputType.phone,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+    );
+  }
+}
+
+// ----------------------------------------------------------- posting rules
+
+class _PostingRulesCard extends StatefulWidget {
+  const _PostingRulesCard({required this.metrics});
+
+  final SettingsMetrics metrics;
+
+  @override
+  State<_PostingRulesCard> createState() => _PostingRulesCardState();
+}
+
+class _PostingRulesCardState extends State<_PostingRulesCard> with RevisionReload {
   final _backdate = TextEditingController();
   bool _allowNegative = false;
   bool _lockReconciled = true;
@@ -214,7 +390,6 @@ class _PoliciesCardState extends State<_PoliciesCard> with RevisionReload {
 
   @override
   void dispose() {
-    _name.dispose();
     _backdate.dispose();
     super.dispose();
   }
@@ -222,13 +397,11 @@ class _PoliciesCardState extends State<_PoliciesCard> with RevisionReload {
   @override
   Future<void> reload() async {
     final c = session.services.catalog;
-    final name = await c.setting('business.name');
     final back = await c.setting('posting.max_backdate_days');
     final neg = await c.setting('posting.allow_negative_cash');
     final lock = await c.setting('posting.lock_reconciled_days');
     if (!mounted) return;
     setState(() {
-      _name.text = name ?? '';
       _backdate.text = back ?? '31';
       _allowNegative = neg == '1';
       _lockReconciled = lock != '0';
@@ -246,7 +419,6 @@ class _PoliciesCardState extends State<_PoliciesCard> with RevisionReload {
     final c = s.services.catalog;
     setState(() => _saving = true);
     await runAction(context, () async {
-      await c.putSetting('business.name', _name.text.trim(), s.actor);
       await c.putSetting('posting.max_backdate_days', '$days', s.actor);
       await c.putSetting('posting.allow_negative_cash', _allowNegative ? '1' : '0', s.actor);
       await c.putSetting('posting.lock_reconciled_days', _lockReconciled ? '1' : '0', s.actor);
@@ -258,8 +430,8 @@ class _PoliciesCardState extends State<_PoliciesCard> with RevisionReload {
   Widget build(BuildContext context) {
     final m = widget.metrics;
     return SettingsSectionCard(
-      icon: Icons.storefront_outlined,
-      title: 'اطلاعات صرافی',
+      icon: Icons.rule_outlined,
+      title: 'قوانین ثبت اسناد',
       padding: m.cardPadding,
       footer: Text(
         'این تنظیمات روی همه کاربران و همه صندوق‌ها اعمال می‌شود.',
@@ -279,16 +451,12 @@ class _PoliciesCardState extends State<_PoliciesCard> with RevisionReload {
           : Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                SettingsFormRow(
-                  gap: m.fieldGap,
-                  left: GfTextField(label: 'نام صرافی', prefixIcon: Icons.storefront_outlined, controller: _name),
-                  right: GfTextField(
-                    label: 'حداکثر روزهای ثبت با تاریخ گذشته',
-                    hint: '۰ = بدون محدودیت',
-                    prefixIcon: Icons.history,
-                    controller: _backdate,
-                    keyboardType: TextInputType.number,
-                  ),
+                GfTextField(
+                  label: 'حداکثر روزهای ثبت با تاریخ گذشته',
+                  hint: '۰ = بدون محدودیت',
+                  prefixIcon: Icons.history,
+                  controller: _backdate,
+                  keyboardType: TextInputType.number,
                 ),
                 SizedBox(height: m.fieldGap),
                 SettingsFormRow(
@@ -421,6 +589,11 @@ class _OpeningCashCardState extends State<_OpeningCashCard> {
 
 // -------------------------------------------------------------- currencies
 
+/// Single-digit settings and a one-word badge; the default flex/status widths
+/// leave the headers truncated or the badge floating in empty space.
+const double _currencyDigitsWidth = 96;
+const double _currencyStatusWidth = 96;
+
 class _CurrenciesTable extends StatelessWidget {
   const _CurrenciesTable();
 
@@ -430,48 +603,260 @@ class _CurrenciesTable extends StatelessWidget {
     final canManage = s.can(Permissions.settingsManage);
     final list = s.currencies.values.toList()..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
     return LedgerTable(
+      shrinkWrap: true,
       title: 'ارزها',
       subtitle: 'IRT = تومان ایران (۱ تومان = ۱۰ ریال) و با ریال (IRR) یکی نیست. '
           'تعداد اعشار ارزی که در آن سند ثبت شده قابل تغییر نیست.',
       itemLabel: 'ارز',
+      minWidth: 680,
+      showRowNumbers: false,
+      emptyText: 'ارزی تعریف نشده است.',
       actions: [
         if (canManage)
           GfPrimaryButton(label: 'ارز جدید', icon: Icons.add, onPressed: () => _CurrencyDialog.show(context)),
       ],
       columns: [
-        const LedgerColumn('کد', width: 80),
-        const LedgerColumn('نام', flex: 2),
-        const LedgerColumn('نماد'),
-        const LedgerColumn('اعشار مبلغ', numeric: true),
-        const LedgerColumn('اعشار نرخ', numeric: true),
-        const LedgerColumn('گرد کردن', flex: 2),
-        const LedgerColumn('وضعیت'),
-        if (canManage) const LedgerColumn('', width: LedgerRowMenu.width),
+        const LedgerColumn.code(),
+        const LedgerColumn.primary('ارز'),
+        const LedgerColumn.text('روش گرد کردن'),
+        const LedgerColumn('اعشار مبلغ', numeric: true, width: _currencyDigitsWidth),
+        const LedgerColumn('اعشار نرخ', numeric: true, width: _currencyDigitsWidth),
+        const LedgerColumn('وضعیت', width: _currencyStatusWidth),
+        if (canManage) const LedgerColumn.actions(),
       ],
       rows: [
         for (final c in list)
-          [
-            Text(c.code, style: AppTypography.bodyMedium, textDirection: TextDirection.ltr),
-            Text(c.nameFa),
-            Text(c.symbol),
-            Text('${c.precision}'),
-            Text('${c.rateScale}'),
-            Text(_roundingLabel(c.rounding)),
-            Align(
-              alignment: AlignmentDirectional.centerStart,
-              child: GfStatusBadge(
-                label: c.isActive ? 'فعال' : 'غیرفعال',
-                color: c.isActive ? AppColors.success : AppColors.textMuted,
-                compact: true,
+          () {
+            final muted = c.isActive ? null : AppColors.textMuted;
+            return [
+              Text(
+                c.code,
+                style: AppTypography.bodySemiBold.copyWith(color: muted),
+                textDirection: TextDirection.ltr,
               ),
-            ),
-            if (canManage)
-              LedgerRowMenu(
-                onSelected: (_) => _CurrencyDialog.show(context, existing: c),
-                items: [gfPopupMenuItem(value: 'edit', label: 'ویرایش')],
+              Text.rich(
+                TextSpan(
+                  children: [
+                    TextSpan(text: c.nameFa, style: AppTypography.bodyMedium.copyWith(color: muted)),
+                    if (c.symbol.trim().isNotEmpty)
+                      TextSpan(
+                        text: '  ${c.symbol.trim()}',
+                        style: AppTypography.caption.copyWith(color: AppColors.textMuted),
+                      ),
+                  ],
+                ),
               ),
-          ],
+              Text(_roundingLabel(c.rounding), style: AppTypography.body.copyWith(color: muted ?? AppColors.textSecondary)),
+              Text('${c.precision}', style: AppTypography.bodyMedium.copyWith(color: muted)),
+              Text('${c.rateScale}', style: AppTypography.bodyMedium.copyWith(color: muted)),
+              Align(
+                alignment: AlignmentDirectional.centerStart,
+                child: GfStatusBadge(
+                  label: c.isActive ? 'فعال' : 'غیرفعال',
+                  color: c.isActive ? AppColors.success : AppColors.textMuted,
+                  compact: true,
+                ),
+              ),
+              if (canManage)
+                LedgerRowMenu(
+                  onSelected: (_) => _CurrencyDialog.show(context, existing: c),
+                  items: [gfPopupMenuItem(value: 'edit', label: 'ویرایش')],
+                ),
+            ];
+          }(),
       ],
+      onTapRow: canManage ? (i) => _CurrencyDialog.show(context, existing: list[i]) : null,
+    );
+  }
+}
+
+// ----------------------------------------------------------------- drawers
+
+class _DrawersTable extends StatefulWidget {
+  const _DrawersTable();
+
+  @override
+  State<_DrawersTable> createState() => _DrawersTableState();
+}
+
+class _DrawersTableState extends State<_DrawersTable> with RevisionReload {
+  Map<int, Map<String, int>> _balances = const {};
+
+  @override
+  Future<void> reload() async {
+    final queries = session.services.queries;
+    final balances = <int, Map<String, int>>{
+      for (final d in session.drawers) d.id: await queries.cashBalances(drawerId: d.id),
+    };
+    if (!mounted) return;
+    setState(() => _balances = balances);
+  }
+
+  Future<void> _toggle(CashDrawer d) async {
+    final s = context.read<AppSession>();
+    await runAction(
+      context,
+      () => s.services.catalog.updateDrawer(d.id, name: d.nameFa, isActive: !d.isActive, actor: s.actor),
+      success: d.isActive ? 'صندوق «${d.nameFa}» غیرفعال شد.' : 'صندوق «${d.nameFa}» فعال شد.',
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final s = context.watch<AppSession>();
+    final canManage = s.can(Permissions.settingsManage);
+    final list = s.drawers;
+    return LedgerTable(
+      shrinkWrap: true,
+      title: 'صندوق‌ها',
+      subtitle: 'هر صندوق موجودی، سرمایه اولیه و بیلانس روزانه جداگانه دارد. '
+          'صندوق با موجودی غیرصفر قابل غیرفعال کردن نیست.',
+      itemLabel: 'صندوق',
+      minWidth: 680,
+      showRowNumbers: false,
+      emptyText: 'صندوقی تعریف نشده است.',
+      actions: [
+        if (canManage)
+          GfPrimaryButton(label: 'صندوق جدید', icon: Icons.add, onPressed: () => _DrawerDialog.show(context)),
+      ],
+      columns: [
+        const LedgerColumn.code(),
+        const LedgerColumn.primary('صندوق'),
+        const LedgerColumn.description('موجودی'),
+        const LedgerColumn('وضعیت', width: _currencyStatusWidth),
+        if (canManage) const LedgerColumn.actions(),
+      ],
+      rows: [
+        for (final d in list)
+          () {
+            final muted = d.isActive ? null : AppColors.textMuted;
+            final balances = (_balances[d.id] ?? const {}).entries.where((e) => e.value != 0).toList()
+              ..sort((a, b) => (s.currency(a.key)?.sortOrder ?? 99).compareTo(s.currency(b.key)?.sortOrder ?? 99));
+            final summary = balances.isEmpty
+                ? 'بدون موجودی'
+                : balances
+                    .map((e) => '${MoneyFormat.amount(e.value, s.currency(e.key))} ${s.currency(e.key)?.nameFa ?? e.key}')
+                    .join('  ·  ');
+            return [
+              Text(d.code, style: AppTypography.caption.copyWith(color: muted), textDirection: TextDirection.ltr),
+              Text(d.nameFa, style: AppTypography.bodyMedium.copyWith(color: muted)),
+              Tooltip(
+                message: summary,
+                child: Text(
+                  summary,
+                  style: AppTypography.body.copyWith(color: balances.isEmpty ? AppColors.textMuted : muted),
+                ),
+              ),
+              Align(
+                alignment: AlignmentDirectional.centerStart,
+                child: GfStatusBadge(
+                  label: d.isActive ? 'فعال' : 'غیرفعال',
+                  color: d.isActive ? AppColors.success : AppColors.textMuted,
+                  compact: true,
+                ),
+              ),
+              if (canManage)
+                LedgerRowMenu(
+                  onSelected: (action) {
+                    if (action == 'edit') _DrawerDialog.show(context, existing: d);
+                    if (action == 'toggle') _toggle(d);
+                  },
+                  items: [
+                    gfPopupMenuItem(value: 'edit', label: 'ویرایش نام'),
+                    gfPopupMenuItem(
+                      value: 'toggle',
+                      label: d.isActive ? 'غیرفعال کردن' : 'فعال کردن',
+                      danger: d.isActive,
+                    ),
+                  ],
+                ),
+            ];
+          }(),
+      ],
+      onTapRow: canManage ? (i) => _DrawerDialog.show(context, existing: list[i]) : null,
+    );
+  }
+}
+
+class _DrawerDialog extends StatefulWidget {
+  const _DrawerDialog({this.existing});
+
+  final CashDrawer? existing;
+
+  static Future<void> show(BuildContext context, {CashDrawer? existing}) {
+    return showDialog<void>(
+      context: context,
+      builder: (_) => ChangeNotifierProvider.value(
+        value: context.read<AppSession>(),
+        child: _DrawerDialog(existing: existing),
+      ),
+    );
+  }
+
+  @override
+  State<_DrawerDialog> createState() => _DrawerDialogState();
+}
+
+class _DrawerDialogState extends State<_DrawerDialog> {
+  late final _name = TextEditingController(text: widget.existing?.nameFa);
+  bool _saving = false;
+
+  @override
+  void dispose() {
+    _name.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    if (_name.text.trim().isEmpty) {
+      GfToast.error(context, 'نام صندوق را وارد کنید.');
+      return;
+    }
+    final s = context.read<AppSession>();
+    final existing = widget.existing;
+    setState(() => _saving = true);
+    final ok = await runAction(context, () async {
+      if (existing == null) {
+        await s.services.catalog.addDrawer(_name.text, s.actor);
+      } else {
+        await s.services.catalog.updateDrawer(existing.id, name: _name.text, isActive: existing.isActive, actor: s.actor);
+      }
+      return true;
+    }, success: existing == null ? 'صندوق جدید اضافه شد.' : 'نام صندوق ذخیره شد.');
+    if (!mounted) return;
+    setState(() => _saving = false);
+    if (ok == true) Navigator.of(context).pop();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final existing = widget.existing;
+    return GfDialogShell(
+      icon: existing == null ? Icons.add_business_outlined : Icons.edit_outlined,
+      iconColor: AppColors.primary,
+      title: existing == null ? 'صندوق جدید' : 'ویرایش صندوق',
+      subtitle: existing == null ? 'برای صندوق جدید حساب نقد جداگانه ساخته می‌شود.' : 'کد صندوق: ${existing.code}',
+      cancelLabel: 'انصراف',
+      onCancel: () => Navigator.of(context).pop(),
+      primaryLabel: 'ذخیره',
+      primaryIcon: Icons.save_outlined,
+      onPrimary: _save,
+      saving: _saving,
+      maxWidth: 440,
+      body: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          GfTextField(label: 'نام صندوق', controller: _name, required: true, autofocus: true),
+          if (existing == null) ...[
+            const SizedBox(height: 14),
+            const DialogInfoBanner(
+              message: 'پس از ساخت، سرمایه اولیه هر ارز این صندوق را از بخش «سرمایه اولیه صندوق» ثبت کنید.',
+              tone: DialogBannerTone.info,
+            ),
+          ],
+        ],
+      ),
     );
   }
 }
@@ -1046,10 +1431,10 @@ class _BackupHistoryTableState extends State<_BackupHistoryTable> with RevisionR
       isLoading: _loading,
       emptyText: 'هنوز پشتیبانی تهیه نشده است.',
       columns: const [
-        LedgerColumn('زمان', flex: 2),
-        LedgerColumn('نوع', flex: 2),
-        LedgerColumn('فایل', flex: 4),
-        LedgerColumn('حجم', flex: 1, numeric: true),
+        LedgerColumn.dateTime(),
+        LedgerColumn.text('نوع'),
+        LedgerColumn.description('فایل'),
+        LedgerColumn.number('حجم'),
       ],
       rows: [
         for (final h in _history)
@@ -1069,6 +1454,83 @@ class _BackupHistoryTableState extends State<_BackupHistoryTable> with RevisionR
             ),
             Text(p.basename(h['file_path'] as String), style: AppTypography.caption, textDirection: TextDirection.ltr),
             Text('${((h['size_bytes'] as int) / 1024).ceil()} KB', textDirection: TextDirection.ltr),
+          ],
+      ],
+    );
+  }
+}
+
+String _excelActionLabel(String action) => switch (action) {
+      'data.export' => 'خروجی اکسل',
+      'data.import' => 'ورودی اکسل',
+      'data.clear' => 'پاک کردن داده‌ها',
+      _ => action,
+    };
+
+class _ExcelFileLogTable extends StatefulWidget {
+  const _ExcelFileLogTable();
+
+  @override
+  State<_ExcelFileLogTable> createState() => _ExcelFileLogTableState();
+}
+
+class _ExcelFileLogTableState extends State<_ExcelFileLogTable> with RevisionReload {
+  List<AuditEntry> _entries = const [];
+  bool _loading = true;
+
+  @override
+  Future<void> reload() async {
+    final entries = await session.services.transfer.fileLog();
+    if (!mounted) return;
+    setState(() {
+      _entries = entries;
+      _loading = false;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return LedgerTable(
+      title: 'سوابق فایل‌های اکسل',
+      subtitle: 'خروجی، ورودی و پاک کردن داده‌ها',
+      itemLabel: 'عملیات',
+      isLoading: _loading,
+      emptyText: 'هنوز فایل اکسلی ثبت نشده است.',
+      columns: const [
+        LedgerColumn('زمان', flex: 2),
+        LedgerColumn('عملیات', flex: 2),
+        LedgerColumn('فایل', flex: 4),
+        LedgerColumn('نتیجه', flex: 1),
+      ],
+      rows: [
+        for (final e in _entries)
+          [
+            Text(DateFormatFa.dateTime(e.occurredAt)),
+            Align(
+              alignment: AlignmentDirectional.centerStart,
+              child: GfStatusBadge(
+                label: _excelActionLabel(e.action),
+                color: switch (e.action) {
+                  'data.import' => AppColors.warning,
+                  'data.clear' => AppColors.error,
+                  _ => AppColors.primary,
+                },
+                compact: true,
+              ),
+            ),
+            Text(
+              e.action == 'data.clear' ? '—' : (e.entityId ?? '—'),
+              style: AppTypography.caption,
+              textDirection: e.action == 'data.clear' ? null : TextDirection.ltr,
+            ),
+            Align(
+              alignment: AlignmentDirectional.centerStart,
+              child: GfStatusBadge(
+                label: e.outcome == 'success' ? 'موفق' : 'ناموفق',
+                color: e.outcome == 'success' ? AppColors.success : AppColors.error,
+                compact: true,
+              ),
+            ),
           ],
       ],
     );
@@ -1192,7 +1654,7 @@ class _AuditTableState extends State<_AuditTable> with RevisionReload {
       subtitle: 'همه عملیات مهم با کاربر، زمان و نتیجه ثبت می‌شود.',
       itemLabel: 'رویداد',
       isLoading: _loading,
-      minWidth: 900,
+      minWidth: 1100,
       page: _page,
       pageSize: _pageSize,
       total: _total,
@@ -1204,20 +1666,24 @@ class _AuditTableState extends State<_AuditTable> with RevisionReload {
       },
       emptyText: 'رویدادی ثبت نشده است.',
       columns: const [
-        LedgerColumn('زمان', flex: 2),
-        LedgerColumn('کاربر', flex: 1),
-        LedgerColumn('عملیات', flex: 2),
-        LedgerColumn('موضوع', flex: 2),
-        LedgerColumn('نتیجه', flex: 1),
-        LedgerColumn('توضیح', flex: 3),
+        LedgerColumn.dateTime(),
+        LedgerColumn.text('عملیات'),
+        LedgerColumn.text('کاربر'),
+        LedgerColumn.text('موضوع'),
+        LedgerColumn.description('توضیح'),
+        LedgerColumn.status('نتیجه'),
       ],
       rows: [
         for (final e in _entries)
           [
             Text(DateFormatFa.dateTime(e.occurredAt)),
-            Text(e.actorName ?? '—'),
             Text(e.action, textDirection: TextDirection.ltr),
+            Text(e.actorName ?? '—'),
             Text('${e.entityType} ${e.entityId ?? ''}', textDirection: TextDirection.ltr),
+            Tooltip(
+              message: e.reason ?? e.message ?? '',
+              child: Text(e.reason ?? e.message ?? ''),
+            ),
             Align(
               alignment: AlignmentDirectional.centerStart,
               child: GfStatusBadge(
@@ -1225,10 +1691,6 @@ class _AuditTableState extends State<_AuditTable> with RevisionReload {
                 color: e.outcome == 'success' ? AppColors.success : AppColors.error,
                 compact: true,
               ),
-            ),
-            Tooltip(
-              message: e.reason ?? e.message ?? '',
-              child: Text(e.reason ?? e.message ?? ''),
             ),
           ],
       ],
@@ -1456,6 +1918,279 @@ class _DataTransferCardState extends State<_DataTransferCard> {
           ],
         ],
       ),
+    );
+  }
+}
+
+class _AutoExcelExportCard extends StatefulWidget {
+  const _AutoExcelExportCard({required this.metrics});
+
+  final SettingsMetrics metrics;
+
+  @override
+  State<_AutoExcelExportCard> createState() => _AutoExcelExportCardState();
+}
+
+class _AutoExcelExportCardState extends State<_AutoExcelExportCard> with RevisionReload {
+  bool _enabled = false;
+  final _interval = TextEditingController();
+  final _retention = TextEditingController();
+
+  /// Empty means the default folder.
+  String _folder = '';
+  bool _saving = false;
+  bool _running = false;
+
+  @override
+  void dispose() {
+    _interval.dispose();
+    _retention.dispose();
+    super.dispose();
+  }
+
+  @override
+  Future<void> reload() async {
+    final c = session.services.catalog;
+    final enabled = await c.setting('excel.auto_enabled');
+    final interval = await c.setting('excel.auto_interval_hours');
+    final retention = await c.setting('excel.auto_retention_count');
+    final folder = await c.setting('excel.auto_directory');
+    if (!mounted) return;
+    setState(() {
+      _enabled = enabled == '1';
+      _interval.text = interval ?? '24';
+      _retention.text = retention ?? '30';
+      _folder = folder?.trim() ?? '';
+    });
+  }
+
+  String get _effectiveFolder => _folder.isEmpty ? session.services.excelExportDirectory : _folder;
+
+  Future<void> _pickFolder() async {
+    final picked = await FilePicker.platform.getDirectoryPath(
+      dialogTitle: 'انتخاب پوشه خروجی خودکار اکسل',
+      initialDirectory: _effectiveFolder,
+      lockParentWindow: true,
+    );
+    if (picked != null && mounted) setState(() => _folder = picked);
+  }
+
+  Future<void> _save() async {
+    final interval = int.tryParse(Decimal.normalizeDigits(_interval.text.trim()));
+    final retention = int.tryParse(Decimal.normalizeDigits(_retention.text.trim()));
+    if (interval == null || interval < 1 || retention == null || retention < 1) {
+      GfToast.error(context, 'فاصله (ساعت) و تعداد نگهداری باید عدد مثبت باشد.');
+      return;
+    }
+    final s = context.read<AppSession>();
+    setState(() => _saving = true);
+    await runAction(context, () async {
+      await s.services.catalog.putSetting('excel.auto_enabled', _enabled ? '1' : '0', s.actor);
+      await s.services.catalog.putSetting('excel.auto_interval_hours', '$interval', s.actor);
+      await s.services.catalog.putSetting('excel.auto_retention_count', '$retention', s.actor);
+      await s.services.catalog.putSetting('excel.auto_directory', _folder, s.actor);
+    }, success: 'تنظیمات خروجی خودکار اکسل ذخیره شد.');
+    if (mounted) setState(() => _saving = false);
+  }
+
+  Future<void> _runNow() async {
+    final s = context.read<AppSession>();
+    setState(() => _running = true);
+    final row = await runAction(context, () => s.services.transfer.runAutoExport(actor: s.actor));
+    if (!mounted) return;
+    setState(() => _running = false);
+    if (row == null) return;
+    if (row['outcome'] == 'success') {
+      GfToast.success(context, 'خروجی اکسل ذخیره شد: ${row['file_path']}');
+    } else {
+      GfToast.error(context, 'خروجی خودکار اکسل ناکام شد: ${row['message']}');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final s = context.watch<AppSession>();
+    final m = widget.metrics;
+    final folder = _effectiveFolder;
+    return SettingsSectionCard(
+      icon: Icons.schedule_outlined,
+      title: 'خروجی خودکار اکسل',
+      padding: m.cardPadding,
+      footer: const SettingsFooterNote(
+        'هنگام باز بودن برنامه، هر ۱۵ دقیقه بررسی می‌شود و در صورت رسیدن زمان، یک فایل اکسل کامل در پوشه انتخاب‌شده ذخیره می‌شود. '
+        'فقط فایل‌هایی که خود برنامه ساخته است با رسیدن به حد نگهداری حذف می‌شوند.',
+        warning: false,
+      ),
+      actions: [
+        GfSecondaryButton(label: 'انصراف', icon: Icons.close, onPressed: _saving ? null : reload),
+        if (s.can(Permissions.backupCreate))
+          GfSecondaryButton(
+            label: 'اجرای خروجی اکنون',
+            icon: Icons.play_arrow_outlined,
+            isLoading: _running,
+            onPressed: _running ? null : _runNow,
+          ),
+        GfPrimaryButton(
+          label: 'ذخیره تغییرات',
+          icon: Icons.save_outlined,
+          isLoading: _saving,
+          onPressed: _saving ? null : _save,
+        ),
+      ],
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          GfToggleCard(
+            label: 'خروجی خودکار اکسل',
+            subtitle: 'همه داده‌ها در فاصله تعیین‌شده به‌صورت خودکار در یک فایل اکسل ذخیره می‌شود.',
+            value: _enabled,
+            onChanged: (v) => setState(() => _enabled = v),
+          ),
+          SizedBox(height: m.fieldGap),
+          SettingsFormRow(
+            gap: m.fieldGap,
+            left: GfTextField(
+              label: 'هر چند ساعت',
+              prefixIcon: Icons.timer_outlined,
+              controller: _interval,
+              keyboardType: TextInputType.number,
+            ),
+            right: GfTextField(
+              label: 'تعداد فایل‌های نگهداری',
+              prefixIcon: Icons.layers_outlined,
+              controller: _retention,
+              keyboardType: TextInputType.number,
+            ),
+          ),
+          SizedBox(height: m.fieldGap),
+          Text('پوشه ذخیره فایل‌ها', style: AppTypography.label),
+          const SizedBox(height: 6),
+          Row(
+            children: [
+              Expanded(
+                child: GfTextField(
+                  key: ValueKey(folder),
+                  initialValue: folder,
+                  readOnly: true,
+                  prefixIcon: Icons.folder_open_outlined,
+                  hint: _folder.isEmpty ? 'پوشه پیش‌فرض' : null,
+                ),
+              ),
+              const SizedBox(width: 8),
+              GfIconButton(icon: Icons.drive_folder_upload_outlined, tooltip: 'تغییر پوشه', size: 48, onPressed: _pickFolder),
+              const SizedBox(width: 8),
+              GfIconButton(
+                icon: Icons.restart_alt,
+                tooltip: 'بازگشت به پوشه پیش‌فرض',
+                size: 48,
+                onPressed: _folder.isEmpty ? null : () => setState(() => _folder = ''),
+              ),
+              const SizedBox(width: 8),
+              GfIconButton(
+                icon: Icons.open_in_new,
+                tooltip: 'باز کردن پوشه',
+                size: 48,
+                onPressed: () => _openPath(folder),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AutoExcelExportHistoryTable extends StatefulWidget {
+  const _AutoExcelExportHistoryTable();
+
+  @override
+  State<_AutoExcelExportHistoryTable> createState() => _AutoExcelExportHistoryTableState();
+}
+
+class _AutoExcelExportHistoryTableState extends State<_AutoExcelExportHistoryTable> with RevisionReload {
+  List<Map<String, Object?>> _history = const [];
+  Set<String> _missing = const {};
+  bool _loading = true;
+
+  @override
+  Future<void> reload() async {
+    final history = await session.services.transfer.autoExportHistory();
+    final missing = <String>{
+      for (final h in history)
+        if (h['outcome'] == 'success' && !await File(h['file_path'] as String).exists()) h['file_path'] as String,
+    };
+    if (!mounted) return;
+    setState(() {
+      _history = history;
+      _missing = missing;
+      _loading = false;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return LedgerTable(
+      title: 'سوابق خروجی خودکار اکسل',
+      subtitle: '۱۰۰ خروجی آخر همراه با مسیر کامل فایل',
+      itemLabel: 'خروجی',
+      isLoading: _loading,
+      minWidth: 900,
+      emptyText: 'هنوز خروجی خودکاری انجام نشده است.',
+      columns: const [
+        LedgerColumn('زمان', flex: 2),
+        LedgerColumn('وضعیت', flex: 2),
+        LedgerColumn('مسیر فایل', flex: 6),
+        LedgerColumn('معاملات', flex: 1, numeric: true),
+        LedgerColumn('حجم', flex: 1, numeric: true),
+        LedgerColumn('', width: LedgerRowMenu.width),
+      ],
+      rows: [
+        for (final h in _history)
+          () {
+            final path = h['file_path'] as String;
+            final ok = h['outcome'] == 'success';
+            final missing = _missing.contains(path);
+            final size = h['size_bytes'] as int?;
+            return [
+              Text(DateFormatFa.dateTime(DateTime.parse(h['created_at'] as String))),
+              Align(
+                alignment: AlignmentDirectional.centerStart,
+                child: Tooltip(
+                  message: (h['message'] as String?) ?? '',
+                  child: GfStatusBadge(
+                    label: !ok ? 'ناموفق' : (missing ? 'حذف شده' : 'موفق'),
+                    color: !ok ? AppColors.error : (missing ? AppColors.textMuted : AppColors.success),
+                    compact: true,
+                  ),
+                ),
+              ),
+              Tooltip(
+                message: path,
+                child: SelectableText(
+                  path,
+                  style: AppTypography.caption,
+                  textDirection: TextDirection.ltr,
+                  maxLines: 1,
+                ),
+              ),
+              Text(ok ? '${h['transactions'] ?? 0}' : '—'),
+              Text(size == null ? '—' : '${(size / 1024).ceil()} KB', textDirection: TextDirection.ltr),
+              LedgerRowMenu(
+                onSelected: (value) {
+                  if (value == 'folder') _openPath(p.dirname(path));
+                  if (value == 'copy') {
+                    Clipboard.setData(ClipboardData(text: path));
+                    GfToast.success(context, 'مسیر فایل کپی شد.');
+                  }
+                },
+                items: [
+                  gfPopupMenuItem(value: 'folder', label: 'باز کردن پوشه'),
+                  gfPopupMenuItem(value: 'copy', label: 'کپی مسیر فایل'),
+                ],
+              ),
+            ];
+          }(),
+      ],
     );
   }
 }

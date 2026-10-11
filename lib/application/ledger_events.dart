@@ -1,6 +1,6 @@
 import 'dart:async';
 
-enum LedgerChange { posting, customer, rates, reconciliation, reference, restore }
+enum LedgerChange { posting, customer, rates, reconciliation, reference, restore, export }
 
 /// Broadcasts *after* a successful commit so queries can refresh.
 ///

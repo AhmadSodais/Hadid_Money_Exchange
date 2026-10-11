@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:easy_localization/easy_localization.dart' hide TextDirection;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -54,6 +56,21 @@ void _installWindowsKeyboardGuards() {
   };
 }
 
+/// Checks at startup and then every 15 minutes; the configured interval
+/// decides whether an export is actually due.
+void _scheduleAutoExcelExport(AppServices services) {
+  Future<void> check() async {
+    try {
+      await services.transfer.autoExportIfDue();
+    } catch (e, st) {
+      debugPrint('Auto Excel export failed: $e\n$st');
+    }
+  }
+
+  unawaited(check());
+  Timer.periodic(const Duration(minutes: 15), (_) => check());
+}
+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   _installWindowsKeyboardGuards();
@@ -74,6 +91,7 @@ Future<void> main() async {
     final services = await AppServices.open(
       databasePath: p.join(support.path, AppConstants.dataFolderName, 'hadid_exchange.db'),
       backupDirectory: p.join(support.path, AppConstants.backupFolderName),
+      excelExportDirectory: p.join(support.path, AppConstants.excelExportFolderName),
     );
     try {
       await services.backups.autoBackupIfDue();
@@ -82,6 +100,7 @@ Future<void> main() async {
       debugPrint('Auto backup failed: $e\n$st');
     }
     session = await AppSession.start(services, SecurityService.ownerUserId);
+    _scheduleAutoExcelExport(services);
   } catch (e, st) {
     startupError = e.toString();
     debugPrint('Database init failed: $e\n$st');

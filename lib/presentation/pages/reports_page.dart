@@ -159,7 +159,7 @@ class _PositionReportState extends _ReportState<_PositionReport> {
       children: [
         const SizedBox(height: AppSpacing.sm),
         const InfoBanner(
-          'خالص = نقد صندوق − طلب مشتریان + بدهی مشتریان (به همان ارز). '
+          'خالص = نقد صندوق - طلب مشتریان + بدهی مشتریان (به همان ارز). '
           'حساب موقعیت ارزی مجموع ارز خریداری‌شده و فروخته‌شده را نشان می‌دهد و سود نیست.',
         ),
         const SizedBox(height: AppSpacing.sm),
@@ -174,12 +174,12 @@ class _PositionReportState extends _ReportState<_PositionReport> {
               asOfFilter(),
             ],
             columns: const [
-              LedgerColumn('ارز', flex: 2),
-              LedgerColumn('نقد صندوق', flex: 2, numeric: true),
-              LedgerColumn('طلب مشتریان', flex: 2, numeric: true),
-              LedgerColumn('بدهی مشتریان', flex: 2, numeric: true),
-              LedgerColumn('خالص', flex: 2, numeric: true),
-              LedgerColumn('موقعیت ارزی', flex: 2, numeric: true),
+              LedgerColumn.primary('ارز'),
+              LedgerColumn.amount('نقد صندوق'),
+              LedgerColumn.amount('طلب مشتریان'),
+              LedgerColumn.amount('بدهی مشتریان'),
+              LedgerColumn.amount('خالص'),
+              LedgerColumn.amount('موقعیت ارزی'),
             ],
             rows: [
               for (final code in _codes(s))
@@ -248,11 +248,11 @@ class _DailyReportState extends _ReportState<_DailyReport> {
             ],
             emptyText: 'گردشی ثبت نشده است.',
             columns: const [
-              LedgerColumn('ارز', flex: 2),
-              LedgerColumn('مانده اول دوره', flex: 2, numeric: true),
-              LedgerColumn('ورودی', flex: 2, numeric: true),
-              LedgerColumn('خروجی', flex: 2, numeric: true),
-              LedgerColumn('مانده پایان دوره', flex: 2, numeric: true),
+              LedgerColumn.primary('ارز'),
+              LedgerColumn.amount('مانده اول دوره'),
+              LedgerColumn.amount('ورودی'),
+              LedgerColumn.amount('خروجی'),
+              LedgerColumn.amount('مانده پایان دوره'),
             ],
             rows: [
               for (final m in _cash)
@@ -271,10 +271,10 @@ class _DailyReportState extends _ReportState<_DailyReport> {
           title: 'معاملات به تفکیک نوع',
           emptyText: 'در این دوره معامله‌ای ثبت نشده است.',
           columns: const [
-            LedgerColumn('نوع', flex: 2),
-            LedgerColumn('ارز'),
-            LedgerColumn('تعداد'),
-            LedgerColumn('مجموع', flex: 2, numeric: true),
+            LedgerColumn.text('نوع'),
+            LedgerColumn.text('ارز'),
+            LedgerColumn.number('تعداد'),
+            LedgerColumn.amount('مجموع'),
           ],
           rows: [
             for (final t in _types)
@@ -345,8 +345,8 @@ class _CustomerBalancesReportState extends _ReportState<_CustomerBalancesReport>
             ],
             emptyText: 'همه حسابات مشتریان تسویه است.',
             columns: [
-              const LedgerColumn('مشتری', flex: 3),
-              for (final c in codes) LedgerColumn(_cur(s, c), flex: 2, numeric: true),
+              const LedgerColumn.primary('مشتری'),
+              for (final c in codes) LedgerColumn.amount(_cur(s, c)),
             ],
             rows: [
               for (final id in ids)
@@ -406,13 +406,13 @@ class _ExchangeActivityReportState extends _ReportState<_ExchangeActivityReport>
             ],
             emptyText: 'در این دوره خرید یا فروشی ثبت نشده است.',
             columns: const [
-              LedgerColumn('نوع'),
-              LedgerColumn('ارز'),
-              LedgerColumn('ارز مقابل'),
-              LedgerColumn('تعداد'),
-              LedgerColumn('مجموع ارز', flex: 2, numeric: true),
-              LedgerColumn('مجموع مقابل', flex: 2, numeric: true),
-              LedgerColumn('نرخ (کمترین – بیشترین)', flex: 2),
+              LedgerColumn.text('نوع'),
+              LedgerColumn.text('ارز'),
+              LedgerColumn.text('ارز مقابل'),
+              LedgerColumn.number('تعداد'),
+              LedgerColumn.amount('مجموع ارز'),
+              LedgerColumn.amount('مجموع مقابل'),
+              LedgerColumn.amount('نرخ (کمترین – بیشترین)'),
             ],
             rows: [
               for (final r in _rows)
@@ -481,7 +481,7 @@ class _TrialBalanceReportState extends _ReportState<_TrialBalanceReport> {
             title: 'بیلانس آزمایشی',
             actions: [asOfFilter()],
             emptyText: 'هنوز سندی ثبت نشده است.',
-            columns: const [LedgerColumn('حساب')],
+            columns: const [LedgerColumn.primary('حساب')],
             rows: const [],
           ),
         for (final e in groups.entries) ...[
@@ -501,11 +501,11 @@ class _TrialBalanceReportState extends _ReportState<_TrialBalanceReport> {
               if (e.key == first) asOfFilter(),
             ],
             columns: const [
-              LedgerColumn('کد', width: 120),
-              LedgerColumn('حساب', flex: 3),
-              LedgerColumn('بدهکار', flex: 2, numeric: true),
-              LedgerColumn('بستانکار', flex: 2, numeric: true),
-              LedgerColumn('مانده', flex: 2, numeric: true),
+              LedgerColumn.code(),
+              LedgerColumn.primary('حساب'),
+              LedgerColumn.amount('بدهکار'),
+              LedgerColumn.amount('بستانکار'),
+              LedgerColumn.amount('مانده'),
             ],
             rows: [
               for (final r in e.value)
@@ -516,13 +516,13 @@ class _TrialBalanceReportState extends _ReportState<_TrialBalanceReport> {
                   AmountText(r.creditMinor, s.currency(e.key)),
                   AmountText(r.netMinor, s.currency(e.key), bold: true),
                 ],
-              [
-                const SizedBox.shrink(),
-                Text('جمع', style: AppTypography.bodySemiBold),
-                AmountText(e.value.fold<int>(0, (a, r) => a + r.debitMinor), s.currency(e.key), bold: true),
-                AmountText(e.value.fold<int>(0, (a, r) => a + r.creditMinor), s.currency(e.key), bold: true),
-                const SizedBox.shrink(),
-              ],
+            ],
+            totalRow: [
+              const SizedBox.shrink(),
+              Text('جمع', style: AppTypography.bodySemiBold),
+              AmountText(e.value.fold<int>(0, (a, r) => a + r.debitMinor), s.currency(e.key), bold: true),
+              AmountText(e.value.fold<int>(0, (a, r) => a + r.creditMinor), s.currency(e.key), bold: true),
+              const SizedBox.shrink(),
             ],
           ),
           const SizedBox(height: AppSpacing.md),
@@ -580,17 +580,17 @@ class _IncomeExpenseReportState extends _ReportState<_IncomeExpenseReport> {
             ],
             emptyText: 'در این دوره عاید یا مصرفی ثبت نشده است.',
             columns: const [
-              LedgerColumn('ارز'),
-              LedgerColumn('حساب', flex: 3),
-              LedgerColumn('نوع'),
-              LedgerColumn('مبلغ', flex: 2, numeric: true),
+              LedgerColumn.text('نوع'),
+              LedgerColumn.primary('حساب'),
+              LedgerColumn.text('ارز'),
+              LedgerColumn.amount('مبلغ'),
             ],
             rows: [
               for (final r in _rows)
                 [
-                  Text(_cur(s, r.currency)),
-                  Text('${r.accountCode}  ${r.accountName}'),
                   Text(r.accountType == 'revenue' ? 'عاید' : 'مصرف'),
+                  Text('${r.accountCode}  ${r.accountName}'),
+                  Text(_cur(s, r.currency)),
                   AmountText(_amount(r), s.currency(r.currency)),
                 ],
             ],
@@ -682,19 +682,19 @@ class _GeneralLedgerReportState extends _ReportState<_GeneralLedgerReport> {
             ],
             emptyText: 'برای این حساب و ارز در این دوره گردشی نیست.',
             columns: const [
-              LedgerColumn('تاریخ', width: 110),
-              LedgerColumn('شماره سند', width: 130),
-              LedgerColumn('نوع', flex: 2),
-              LedgerColumn('مشتری', flex: 2),
-              LedgerColumn('بدهکار', flex: 2, numeric: true),
-              LedgerColumn('بستانکار', flex: 2, numeric: true),
-              LedgerColumn('مانده', flex: 2, numeric: true),
+              LedgerColumn.date(),
+              LedgerColumn.reference(),
+              LedgerColumn.text('نوع'),
+              LedgerColumn.primary('مشتری'),
+              LedgerColumn.amount('بدهکار'),
+              LedgerColumn.amount('بستانکار'),
+              LedgerColumn.amount('مانده'),
             ],
             rows: [
               for (final l in _lines)
                 [
                   Text(DateFormatFa.business(l.tx.effectiveDate)),
-                  Text(l.tx.referenceNo, style: AppTypography.caption),
+                  Text(l.tx.referenceNo, style: AppTypography.caption, textDirection: TextDirection.ltr),
                   Text(l.tx.type.labelFa),
                   Text(l.tx.customerName ?? '—'),
                   l.debit == 0 ? const Text('') : AmountText(l.debit, c),
@@ -763,12 +763,12 @@ class _ReconciliationHistoryReportState extends _ReportState<_ReconciliationHist
             ],
             emptyText: 'در این دوره بیلانسی ثبت نشده است.',
             columns: const [
-              LedgerColumn('تاریخ', width: 110),
-              LedgerColumn('ارز'),
-              LedgerColumn('مورد انتظار', flex: 2, numeric: true),
-              LedgerColumn('شمارش', flex: 2, numeric: true),
-              LedgerColumn('اختلاف', flex: 2, numeric: true),
-              LedgerColumn('وضعیت'),
+              LedgerColumn.date(),
+              LedgerColumn.text('ارز'),
+              LedgerColumn.amount('باید باشد'),
+              LedgerColumn.amount('شمارش‌شده'),
+              LedgerColumn.amount('اختلاف'),
+              LedgerColumn.status(),
             ],
             rows: [
               for (final r in _rows)

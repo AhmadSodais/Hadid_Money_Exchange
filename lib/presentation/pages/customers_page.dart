@@ -145,12 +145,12 @@ class _CustomersPageState extends State<CustomersPage> with RevisionReload {
               emptyText: 'مشتری یافت نشد.',
               emptyHint: canManage ? 'برای شروع، «مشتری جدید» را بزنید.' : null,
               columns: const [
-                LedgerColumn('کد', width: 100),
-                LedgerColumn('نام', flex: 3),
-                LedgerColumn('شماره تماس', flex: 2),
-                LedgerColumn('حساب‌ها', flex: 5),
-                LedgerColumn('وضعیت', width: 90),
-                LedgerColumn('', width: LedgerRowMenu.width),
+                LedgerColumn.code(),
+                LedgerColumn.primary('نام'),
+                LedgerColumn.text('شماره تماس'),
+                LedgerColumn.description('حساب‌ها'),
+                LedgerColumn.status(),
+                LedgerColumn.actions(),
               ],
               rows: [
                 for (final c in _customers)

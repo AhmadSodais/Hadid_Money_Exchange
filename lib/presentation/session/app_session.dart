@@ -53,9 +53,7 @@ class AppSession extends ChangeNotifier {
   Future<void> _onChange(LedgerChange change) async {
     if (change == LedgerChange.reference || change == LedgerChange.restore) {
       await _loadReference();
-      if (change == LedgerChange.restore) {
-        _actor = await services.security.actorFor(_actor.userId);
-      }
+      _actor = await services.security.actorFor(_actor.userId);
     }
     _revision++;
     notifyListeners();

@@ -7,24 +7,74 @@ import 'package:provider/provider.dart';
 
 import '../snackbar/snackbar_model.dart';
 import '../snackbar/snackbar_viewmodel.dart';
+import '../theme/app_colors.dart';
 import '../theme/app_typography.dart';
 
-/// Violet Dusk glass tokens for snackbars (independent of light/dark theme).
-abstract final class _SbColors {
-  static const deep = Color(0xFF502D55);
-  static const secondary = Color(0xFF935073);
-  static const cream = Color(0xFFF6DBC0);
-  static const light = Color(0xFFF8F4E9);
-  static const error = Color(0xFFC94C6D);
+/// Glass snackbar colors derived from the active app theme.
+@immutable
+class _SbColors {
+  const _SbColors._({
+    required this.isLight,
+    required this.glassBg,
+    required this.border,
+    required this.title,
+    required this.description,
+    required this.secondaryText,
+    required this.close,
+    required this.primary,
+    required this.success,
+    required this.warning,
+    required this.error,
+  });
 
-  static Color glassBg = deep.withValues(alpha: 0.55);
-  static Color border = light.withValues(alpha: 0.25);
-  static Color description = light.withValues(alpha: 0.75);
-  static Color secondaryText = light.withValues(alpha: 0.55);
-  static Color iconBox = light.withValues(alpha: 0.12);
-  static Color iconBoxBorder = light.withValues(alpha: 0.15);
-  static Color close = light.withValues(alpha: 0.7);
-  static Color progressTrack = light.withValues(alpha: 0.2);
+  /// Reads [Theme.of] so cards rebuild when the theme variant changes.
+  factory _SbColors.of(BuildContext context) {
+    final isLight = Theme.of(context).brightness == Brightness.light;
+    return _SbColors._(
+      isLight: isLight,
+      glassBg: AppColors.modal.withValues(alpha: isLight ? 0.92 : 0.88),
+      border: AppColors.border,
+      title: AppColors.textPrimary,
+      description: AppColors.textSecondary,
+      secondaryText: AppColors.textMuted,
+      close: AppColors.textSecondary,
+      primary: AppColors.primary,
+      success: AppColors.success,
+      warning: AppColors.warning,
+      error: AppColors.error,
+    );
+  }
+
+  final bool isLight;
+  final Color glassBg;
+  final Color border;
+  final Color title;
+  final Color description;
+  final Color secondaryText;
+  final Color close;
+  final Color primary;
+  final Color success;
+  final Color warning;
+  final Color error;
+
+  Color get shadow => Colors.black.withValues(alpha: isLight ? 0.12 : 0.32);
+  Color get progressTrack => primary.withValues(alpha: 0.18);
+
+  Color accentFor(SnackbarType type) => switch (type) {
+        SnackbarType.success => success,
+        SnackbarType.error => error,
+        SnackbarType.warning => warning,
+        SnackbarType.info => primary,
+        SnackbarType.loading => primary,
+        SnackbarType.action => primary,
+      };
+
+  Color borderFor(SnackbarType type) => switch (type) {
+        SnackbarType.error => error.withValues(alpha: 0.55),
+        SnackbarType.warning => warning.withValues(alpha: 0.5),
+        SnackbarType.success => success.withValues(alpha: 0.4),
+        _ => border,
+      };
 }
 
 /// Overlay host: stacks up to 3 glass snackbars at the bottom-end.
@@ -147,22 +197,6 @@ class _GfSnackbarCardState extends State<GfSnackbarCard>
     if (mounted) widget.onClose();
   }
 
-  Color get _accent => switch (widget.model.type) {
-        SnackbarType.success => _SbColors.secondary,
-        SnackbarType.error => _SbColors.error,
-        SnackbarType.warning => _SbColors.cream,
-        SnackbarType.info => _SbColors.secondary,
-        SnackbarType.loading => _SbColors.secondary,
-        SnackbarType.action => _SbColors.cream,
-      };
-
-  Color get _borderColor => switch (widget.model.type) {
-        SnackbarType.error => _SbColors.error.withValues(alpha: 0.6),
-        SnackbarType.warning => _SbColors.cream.withValues(alpha: 0.55),
-        SnackbarType.action => _SbColors.cream.withValues(alpha: 0.4),
-        _ => _SbColors.border,
-      };
-
   IconData get _icon => switch (widget.model.type) {
         SnackbarType.success => Icons.check_circle_outline_rounded,
         SnackbarType.error => Icons.error_outline_rounded,
@@ -190,6 +224,8 @@ class _GfSnackbarCardState extends State<GfSnackbarCard>
     final hasMessage =
         model.message != null && model.message!.trim().isNotEmpty;
     final radius = BorderRadius.circular(8);
+    final colors = _SbColors.of(context);
+    final accent = colors.accentFor(model.type);
 
     return SlideTransition(
       position: _slide,
@@ -200,12 +236,12 @@ class _GfSnackbarCardState extends State<GfSnackbarCard>
             borderRadius: radius,
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withValues(alpha: 0.28),
+                color: colors.shadow,
                 blurRadius: 24,
                 offset: const Offset(0, 10),
               ),
               BoxShadow(
-                color: _accent.withValues(alpha: 0.2),
+                color: accent.withValues(alpha: 0.18),
                 blurRadius: 20,
               ),
             ],
@@ -217,9 +253,9 @@ class _GfSnackbarCardState extends State<GfSnackbarCard>
               child: Container(
                 padding: const EdgeInsets.fromLTRB(12, 10, 10, 10),
                 decoration: BoxDecoration(
-                  color: _SbColors.glassBg,
+                  color: colors.glassBg,
                   borderRadius: radius,
-                  border: Border.all(color: _borderColor),
+                  border: Border.all(color: colors.borderFor(model.type)),
                 ),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
@@ -229,23 +265,17 @@ class _GfSnackbarCardState extends State<GfSnackbarCard>
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         _IconBox(
-                          accent: _accent,
+                          accent: accent,
                           child: model.isLoading
                               ? SizedBox(
                                   width: 18,
                                   height: 18,
                                   child: CircularProgressIndicator(
                                     strokeWidth: 2,
-                                    color: _SbColors.light,
+                                    color: accent,
                                   ),
                                 )
-                              : Icon(
-                                  _icon,
-                                  size: 20,
-                                  color: model.type == SnackbarType.warning
-                                      ? _SbColors.deep
-                                      : _SbColors.light,
-                                ),
+                              : Icon(_icon, size: 20, color: accent),
                         ),
                         const SizedBox(width: 10),
                         Expanded(
@@ -255,11 +285,11 @@ class _GfSnackbarCardState extends State<GfSnackbarCard>
                               Text(
                                 model.title,
                                 style: AppTypography.localize(
-                                  const TextStyle(
+                                  TextStyle(
                                     fontSize: 14,
                                     fontWeight: FontWeight.w600,
                                     height: 1.25,
-                                    color: _SbColors.light,
+                                    color: colors.title,
                                   ),
                                   context: context,
                                 ),
@@ -275,7 +305,7 @@ class _GfSnackbarCardState extends State<GfSnackbarCard>
                                       fontSize: 12,
                                       fontWeight: FontWeight.w400,
                                       height: 1.3,
-                                      color: _SbColors.description,
+                                      color: colors.description,
                                     ),
                                     context: context,
                                   ),
@@ -314,7 +344,7 @@ class _GfSnackbarCardState extends State<GfSnackbarCard>
                                   TextStyle(
                                     fontSize: 11,
                                     fontWeight: FontWeight.w400,
-                                    color: _SbColors.secondaryText,
+                                    color: colors.secondaryText,
                                   ),
                                   context: context,
                                 ),
@@ -352,12 +382,12 @@ class _IconBox extends StatelessWidget {
       height: 36,
       alignment: Alignment.center,
       decoration: BoxDecoration(
-        color: _SbColors.iconBox,
+        color: accent.withValues(alpha: 0.14),
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: _SbColors.iconBoxBorder),
+        border: Border.all(color: accent.withValues(alpha: 0.28)),
         boxShadow: [
           BoxShadow(
-            color: accent.withValues(alpha: 0.3),
+            color: accent.withValues(alpha: 0.2),
             blurRadius: 10,
           ),
         ],
@@ -383,7 +413,7 @@ class _CloseButton extends StatelessWidget {
         child: Icon(
           Icons.close_rounded,
           size: 16,
-          color: _SbColors.close,
+          color: _SbColors.of(context).close,
         ),
       ),
     );
@@ -398,6 +428,7 @@ class _ActionButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final primary = _SbColors.of(context).primary;
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -408,21 +439,22 @@ class _ActionButton extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 10),
           alignment: Alignment.center,
           decoration: BoxDecoration(
+            color: primary.withValues(alpha: 0.1),
             borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: _SbColors.cream),
+            border: Border.all(color: primary),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.undo_rounded, size: 13, color: _SbColors.cream),
+              Icon(Icons.undo_rounded, size: 13, color: primary),
               const SizedBox(width: 4),
               Text(
                 label,
                 style: AppTypography.localize(
-                  const TextStyle(
+                  TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.w600,
-                    color: _SbColors.cream,
+                    color: primary,
                   ),
                   context: context,
                 ),
@@ -443,6 +475,7 @@ class _ProgressRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final p = progress.clamp(0.0, 1.0);
+    final colors = _SbColors.of(context);
     return Row(
       children: [
         Expanded(
@@ -453,16 +486,16 @@ class _ProgressRow extends StatelessWidget {
               child: Stack(
                 fit: StackFit.expand,
                 children: [
-                  ColoredBox(color: _SbColors.progressTrack),
+                  ColoredBox(color: colors.progressTrack),
                   FractionallySizedBox(
                     widthFactor: p,
                     alignment: AlignmentDirectional.centerStart,
-                    child: const DecoratedBox(
+                    child: DecoratedBox(
                       decoration: BoxDecoration(
                         gradient: LinearGradient(
                           colors: [
-                            _SbColors.secondary,
-                            _SbColors.cream,
+                            colors.primary.withValues(alpha: 0.6),
+                            colors.primary,
                           ],
                         ),
                       ),
@@ -480,7 +513,7 @@ class _ProgressRow extends StatelessWidget {
             TextStyle(
               fontSize: 11,
               fontWeight: FontWeight.w600,
-              color: _SbColors.description,
+              color: colors.description,
             ),
             context: context,
           ),

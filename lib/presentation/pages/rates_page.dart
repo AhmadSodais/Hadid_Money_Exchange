@@ -75,21 +75,21 @@ class _RatesPageState extends State<RatesPage> with RevisionReload {
               emptyText: 'هنوز نرخی ثبت نشده است.',
               emptyHint: 'نرخ‌ها هرگز به‌صورت پیش‌فرض در برنامه تعیین نمی‌شوند.',
               columns: const [
-                LedgerColumn('ارز مبدأ', flex: 2),
-                LedgerColumn('ارز مقابل', flex: 2),
-                LedgerColumn('نرخ خرید', flex: 2, numeric: true),
-                LedgerColumn('نرخ فروش', flex: 2, numeric: true),
-                LedgerColumn('زمان ثبت', flex: 2),
-                LedgerColumn('', width: LedgerRowMenu.width),
+                LedgerColumn.dateTime('زمان ثبت'),
+                LedgerColumn.text('ارز مبدأ'),
+                LedgerColumn.text('ارز مقابل'),
+                LedgerColumn.amount('نرخ خرید'),
+                LedgerColumn.amount('نرخ فروش'),
+                LedgerColumn.actions(),
               ],
               rows: [
                 for (final r in _board)
                   [
+                    Text(DateFormatFa.dateTime(r.effectiveAt), style: AppTypography.body),
                     Text(s.currency(r.base)?.nameFa ?? r.base, style: AppTypography.bodyMedium),
                     Text(s.currency(r.quote)?.nameFa ?? r.quote, style: AppTypography.body),
                     Text(MoneyFormat.decimal(r.buyRate), textDirection: TextDirection.ltr, style: AppTypography.bodyMedium),
                     Text(MoneyFormat.decimal(r.sellRate), textDirection: TextDirection.ltr, style: AppTypography.bodyMedium),
-                    Text(DateFormatFa.dateTime(r.effectiveAt), style: AppTypography.caption),
                     LedgerRowMenu(
                       onSelected: (a) {
                         if (a == 'edit') {
@@ -260,9 +260,9 @@ class _HistoryDialog extends StatelessWidget {
               : OrderDetailLinesTable(
                   emptyText: 'سابقه‌ای ثبت نشده است.',
                   columns: const [
-                    OrderDetailColumn('زمان', flex: 3),
-                    OrderDetailColumn('خرید', flex: 2, numeric: true),
-                    OrderDetailColumn('فروش', flex: 2, numeric: true),
+                    LedgerColumn.dateTime(),
+                    LedgerColumn.amount('خرید'),
+                    LedgerColumn.amount('فروش'),
                   ],
                   rows: [
                     for (final r in history)
