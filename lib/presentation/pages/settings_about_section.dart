@@ -57,6 +57,12 @@ class _AboutCard extends StatelessWidget {
           _AboutHero(wide: wide),
           _AboutPanel(
             metrics: metrics,
+            icon: Icons.currency_exchange_rounded,
+            title: _aboutText('appTitle'),
+            child: _AboutParagraphs(texts: [_aboutText('app1'), _aboutText('app2')]),
+          ),
+          _AboutPanel(
+            metrics: metrics,
             icon: Icons.apartment_rounded,
             title: _aboutText('introTitle'),
             child: _AboutParagraphs(

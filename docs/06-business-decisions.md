@@ -17,7 +17,7 @@ Every rule the system enforces that the master prompt did not fix exactly is lis
 | B9 | Closed reconciliation | A closed day blocks postings and reversals dated on or before it for that drawer and currency | Settings: `posting.lock_reconciled_days` |
 | B10 | Reconciliation difference | Stored only. Corrected by an explicit cash adjustment to 5200 with a reason | – |
 | B11 | Reversal | Whole transaction, once, with a reason, dated today by default; the original keeps its date and is marked `reversed` | – |
-| B12 | Opening balances | One active opening per drawer+currency and per customer+currency. To change it, reverse and enter again | – |
+| B12 | Opening balances | One active opening per drawer+currency and per customer+currency. To change it, edit or delete it from the journal (both post a reversal; history is kept) | – |
 | B13 | Deleting | Nothing financial is deleted. Customers are deactivated (or anonymized); currencies are deactivated | – |
 
 ## Security and access
@@ -36,9 +36,11 @@ Every rule the system enforces that the master prompt did not fix exactly is lis
 | # | Decision | Default |
 |---|---|---|
 | D1 | Language | Dari/Persian, right-to-left. UI strings are written in Persian directly in the widgets (the old multi-language JSON files belonged to the retail app) |
-| D2 | Calendar | Solar Hijri (شمسی) display by default; Gregorian selectable in settings. Stored dates are always ISO Gregorian |
-| D3 | Numbers | Western digits with thousands separators; amounts in Excel are exported as exact decimal text plus the currency code, never as floats |
-| D4 | Spreadsheet import | Disabled. Restoring a verified backup is the only bulk-load path, and the legacy importer is the only migration path |
+| D2 | Calendar | Solar Hijri (شمسی) only: every date is shown and entered in Solar Hijri, and the Excel file and backup file names use it too. There is no calendar setting. Inside SQLite, dates stay ISO so that sorting, ranges, and closed-day checks remain exact |
+| D3 | Numbers | Western digits with thousands separators; Excel cells hold exact integer minor units or canonical decimal text, never floats |
+| D4 | Excel input/output | Only in Settings → «ورودی و خروجی اکسل»; pages have no Excel button. Output writes every table to one workbook (credentials excluded). Input never merges: it builds a separate database from the workbook, requires the ledger invariants and the exported fingerprint to match, takes a safety backup, swaps it in, and rolls back on any failure |
+| D6 | Clear all data | Settings → «پاک کردن همه داده‌ها», typed confirmation, `backup.restore` permission. Swaps in a fresh database that keeps exchange information, posting policies, and currency definitions; a safety backup is taken first and can be restored |
+| D7 | Hidden settings | «انتقال از برنامه قبلی» and «سوابق ممیزی و صحت دفاتر» are hidden from the settings navigation (code kept). The audit log is still written |
 | D5 | Backups | Automatic backup at startup when the last one is older than 24 hours; keep the newest 30 automatic backups. Manual, pre-restore, and pre-migration backups are never pruned automatically |
 
 ## Legacy migration

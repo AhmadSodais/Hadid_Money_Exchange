@@ -11,12 +11,10 @@ import '../../core/widgets/widgets.dart';
 import '../../domain/money/currency.dart';
 import '../../domain/shared/business_date.dart';
 import '../../domain/transactions/financial_command.dart';
-import '../../infrastructure/export/excel_export.dart';
 import '../format/money_format.dart';
 import '../session/app_session.dart';
 import '../widgets/app_shell.dart';
 import '../widgets/exchange_ui.dart';
-import '../widgets/export_action.dart';
 import '../widgets/transaction_actions.dart';
 import '../widgets/transaction_detail_dialog.dart';
 
@@ -129,43 +127,6 @@ class _JournalPageState extends State<JournalPage> with RevisionReload {
     return t.description ?? '';
   }
 
-  Future<void> _export() async {
-    final s = context.read<AppSession>();
-    final rows = await s.services.queries.journal(_filter, limit: 100000, newestFirst: false);
-    if (!mounted) return;
-    await exportSheets(context, 'journal', [
-      ExportSheet(
-        name: 'روزنامچه',
-        headers: const [
-          'تاریخ', 'شماره سند', 'نوع', 'مشتری', 'ارز مبدأ', 'مبلغ', 'نرخ', 'ارز مقابل', 'مبلغ مقابل',
-          'کمیشن', 'شرح', 'وضعیت', 'ثبت‌کننده',
-        ],
-        rows: [
-          for (final t in rows)
-            [
-              DateFormatFa.business(t.effectiveDate),
-              t.referenceNo,
-              t.type.labelFa,
-              t.customerName ?? '',
-              t.sourceCurrency ?? '',
-              t.signedAmountMinor != null
-                  ? MoneyFormat.amount(t.signedAmountMinor!, s.currency(t.sourceCurrency))
-                  : (t.sourceAmountMinor == null ? '' : MoneyFormat.amount(t.sourceAmountMinor!, s.currency(t.sourceCurrency))),
-              t.rate ?? '',
-              t.destCurrency ?? '',
-              t.destAmountMinor == null ? '' : MoneyFormat.amount(t.destAmountMinor!, s.currency(t.destCurrency)),
-              t.feeAmountMinor == null
-                  ? ''
-                  : '${MoneyFormat.amount(t.feeAmountMinor!, s.currency(t.feeCurrency))} ${t.feeCurrency}',
-              t.description ?? '',
-              TransactionActions.statusLabel(t),
-              t.createdByName ?? '',
-            ],
-        ],
-      ),
-    ]);
-  }
-
   @override
   Widget build(BuildContext context) {
     final s = context.watch<AppSession>();
@@ -183,7 +144,6 @@ class _JournalPageState extends State<JournalPage> with RevisionReload {
             _refilter();
           },
         ),
-        ExportButton(onPressed: _export),
       ],
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,

@@ -2,6 +2,7 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import '../infrastructure/backup/backup_service.dart';
 import '../infrastructure/database/exchange_database.dart';
+import '../infrastructure/transfer/data_transfer_service.dart';
 import 'catalog_service.dart';
 import 'customer_service.dart';
 import 'legacy_migration_service.dart';
@@ -20,6 +21,7 @@ final class AppServices {
     rebind(db);
     backups = BackupService(this);
     legacy = LegacyMigrationService(this);
+    transfer = DataTransferService(this);
   }
 
   final DateTime Function()? _clock;
@@ -48,6 +50,7 @@ final class AppServices {
   late SecurityService security;
   late BackupService backups;
   late LegacyMigrationService legacy;
+  late DataTransferService transfer;
 
   DateTime now() => (_clock ?? DateTime.now)();
 

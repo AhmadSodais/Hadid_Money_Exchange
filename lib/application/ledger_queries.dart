@@ -89,7 +89,7 @@ final class JournalFilter {
 final class LedgerQueries {
   LedgerQueries(this._db);
 
-  final Database _db;
+  final DatabaseExecutor _db;
 
   // ------------------------------------------------------------------ cash
 

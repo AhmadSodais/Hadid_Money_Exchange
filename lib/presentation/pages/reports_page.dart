@@ -9,12 +9,10 @@ import '../../core/utils/app_calendar.dart';
 import '../../core/widgets/widgets.dart';
 import '../../domain/money/currency.dart';
 import '../../domain/shared/business_date.dart';
-import '../../infrastructure/export/excel_export.dart';
 import '../format/money_format.dart';
 import '../session/app_session.dart';
 import '../widgets/app_shell.dart';
 import '../widgets/exchange_ui.dart';
-import '../widgets/export_action.dart';
 import '../widgets/transaction_detail_dialog.dart';
 
 /// Every report reads posted journal lines only. Amounts of different
@@ -153,37 +151,6 @@ class _PositionReportState extends _ReportState<_PositionReport> {
     return codes;
   }
 
-  void _export(AppSession s) {
-    exportSheets(context, 'currency_position_${asOf.iso}', [
-      ExportSheet(
-        name: 'موقعیت ارزی',
-        notes: ['موقعیت ارزی تا تاریخ ${DateFormatFa.business(asOf)}'],
-        headers: const [
-          'ارز',
-          'نقد صندوق',
-          'طلب مشتریان',
-          'بدهی مشتریان',
-          'خالص پس از حسابات مشتریان',
-          'حساب موقعیت ارزی',
-        ],
-        rows: [
-          for (final code in _codes(s))
-            [
-              _cur(s, code),
-              MoneyFormat.amount(_cash[code] ?? 0, s.currency(code)),
-              MoneyFormat.amount(_customers[code]?.liabilities ?? 0, s.currency(code)),
-              MoneyFormat.amount(_customers[code]?.receivables ?? 0, s.currency(code)),
-              MoneyFormat.amount(
-                (_cash[code] ?? 0) - (_customers[code]?.liabilities ?? 0) + (_customers[code]?.receivables ?? 0),
-                s.currency(code),
-              ),
-              MoneyFormat.amount(_position[code] ?? 0, s.currency(code)),
-            ],
-        ],
-      ),
-    ]);
-  }
-
   @override
   Widget build(BuildContext context) {
     final s = context.watch<AppSession>();
@@ -205,7 +172,6 @@ class _PositionReportState extends _ReportState<_PositionReport> {
             itemLabel: 'ارز',
             actions: [
               asOfFilter(),
-              ExportButton(onPressed: () => _export(s)),
             ],
             columns: const [
               LedgerColumn('ارز', flex: 2),
@@ -264,39 +230,6 @@ class _DailyReportState extends _ReportState<_DailyReport> {
     });
   }
 
-  void _export(AppSession s) {
-    exportSheets(context, 'daily_${from.iso}_${to.iso}', [
-      ExportSheet(
-        name: 'گردش صندوق',
-        notes: ['گردش صندوق از ${DateFormatFa.business(from)} تا ${DateFormatFa.business(to)}'],
-        headers: const ['ارز', 'مانده اول دوره', 'ورودی', 'خروجی', 'مانده پایان دوره'],
-        rows: [
-          for (final m in _cash)
-            [
-              _cur(s, m.currency),
-              MoneyFormat.amount(m.openingMinor, s.currency(m.currency)),
-              MoneyFormat.amount(m.inflowMinor, s.currency(m.currency)),
-              MoneyFormat.amount(m.outflowMinor, s.currency(m.currency)),
-              MoneyFormat.amount(m.closingMinor, s.currency(m.currency)),
-            ],
-        ],
-      ),
-      ExportSheet(
-        name: 'معاملات به تفکیک نوع',
-        headers: const ['نوع', 'ارز', 'تعداد', 'مجموع'],
-        rows: [
-          for (final t in _types)
-            [
-              t.type.labelFa,
-              _cur(s, t.currency),
-              '${t.count}',
-              MoneyFormat.amount(t.totalMinor, s.currency(t.currency)),
-            ],
-        ],
-      ),
-    ]);
-  }
-
   @override
   Widget build(BuildContext context) {
     final s = context.watch<AppSession>();
@@ -312,7 +245,6 @@ class _DailyReportState extends _ReportState<_DailyReport> {
             subtitle: period.exportPeriodLabel,
             actions: [
               periodFilter(),
-              ExportButton(onPressed: () => _export(s)),
             ],
             emptyText: 'گردشی ثبت نشده است.',
             columns: const [
@@ -391,25 +323,6 @@ class _CustomerBalancesReportState extends _ReportState<_CustomerBalancesReport>
     return codes;
   }
 
-  void _export(AppSession s) {
-    final codes = _codes(s);
-    exportSheets(context, 'customer_balances_${asOf.iso}', [
-      ExportSheet(
-        name: 'حسابات مشتریان',
-        notes: ['حسابات مشتریان تا ${DateFormatFa.business(asOf)} — مثبت = طلب مشتری، منفی = بدهی مشتری'],
-        headers: ['کد', 'نام', for (final c in codes) _cur(s, c)],
-        rows: [
-          for (final e in _positions.entries)
-            [
-              _customers[e.key]?.code ?? '${e.key}',
-              _customers[e.key]?.name ?? '${e.key}',
-              for (final c in codes) e.value[c] == null ? '' : MoneyFormat.amount(e.value[c]!, s.currency(c)),
-            ],
-        ],
-      ),
-    ]);
-  }
-
   @override
   Widget build(BuildContext context) {
     final s = context.watch<AppSession>();
@@ -429,7 +342,6 @@ class _CustomerBalancesReportState extends _ReportState<_CustomerBalancesReport>
             itemLabel: 'مشتری',
             actions: [
               asOfFilter(),
-              ExportButton(onPressed: () => _export(s)),
             ],
             emptyText: 'همه حسابات مشتریان تسویه است.',
             columns: [
@@ -475,31 +387,6 @@ class _ExchangeActivityReportState extends _ReportState<_ExchangeActivityReport>
     });
   }
 
-  void _export(AppSession s) {
-    exportSheets(context, 'exchange_activity_${from.iso}_${to.iso}', [
-      ExportSheet(
-        name: 'فعالیت تبادله',
-        notes: [
-          'فعالیت خرید و فروش (فقط معاملات برگشت‌نشده) از ${DateFormatFa.business(from)} تا ${DateFormatFa.business(to)}',
-        ],
-        headers: const ['نوع', 'ارز', 'ارز مقابل', 'تعداد', 'مجموع ارز', 'مجموع مقابل', 'کمترین نرخ', 'بیشترین نرخ'],
-        rows: [
-          for (final r in _rows)
-            [
-              r.type.labelFa,
-              _cur(s, r.baseCurrency),
-              _cur(s, r.quoteCurrency),
-              '${r.count}',
-              MoneyFormat.amount(r.baseTotalMinor, s.currency(r.baseCurrency)),
-              MoneyFormat.amount(r.quoteTotalMinor, s.currency(r.quoteCurrency)),
-              r.minRate,
-              r.maxRate,
-            ],
-        ],
-      ),
-    ]);
-  }
-
   @override
   Widget build(BuildContext context) {
     final s = context.watch<AppSession>();
@@ -516,7 +403,6 @@ class _ExchangeActivityReportState extends _ReportState<_ExchangeActivityReport>
             itemLabel: 'ردیف',
             actions: [
               periodFilter(),
-              ExportButton(onPressed: () => _export(s)),
             ],
             emptyText: 'در این دوره خرید یا فروشی ثبت نشده است.',
             columns: const [
@@ -580,28 +466,6 @@ class _TrialBalanceReportState extends _ReportState<_TrialBalanceReport> {
     return out;
   }
 
-  void _export(AppSession s) {
-    exportSheets(context, 'trial_balance_${asOf.iso}', [
-      for (final e in _byCurrency.entries)
-        ExportSheet(
-          name: 'بیلانس ${e.key}',
-          notes: ['بیلانس آزمایشی ${_cur(s, e.key)} تا ${DateFormatFa.business(asOf)}'],
-          headers: const ['کد حساب', 'نام حساب', 'نوع', 'بدهکار', 'بستانکار', 'مانده (بدهکار مثبت)'],
-          rows: [
-            for (final r in e.value)
-              [
-                r.accountCode,
-                r.accountName,
-                r.accountType,
-                MoneyFormat.amount(r.debitMinor, s.currency(e.key)),
-                MoneyFormat.amount(r.creditMinor, s.currency(e.key)),
-                MoneyFormat.amount(r.netMinor, s.currency(e.key)),
-              ],
-          ],
-        ),
-    ]);
-  }
-
   @override
   Widget build(BuildContext context) {
     final s = context.watch<AppSession>();
@@ -634,7 +498,7 @@ class _TrialBalanceReportState extends _ReportState<_TrialBalanceReport> {
                   color: dr == cr ? AppColors.success : AppColors.error,
                 );
               }(),
-              if (e.key == first) ...[asOfFilter(), ExportButton(onPressed: () => _export(s))],
+              if (e.key == first) asOfFilter(),
             ],
             columns: const [
               LedgerColumn('کد', width: 120),
@@ -692,29 +556,6 @@ class _IncomeExpenseReportState extends _ReportState<_IncomeExpenseReport> {
 
   /// Revenue shown credit-positive, expense debit-positive.
   int _amount(TrialBalanceRow r) => r.accountType == 'revenue' ? -r.netMinor : r.netMinor;
-
-  void _export(AppSession s) {
-    exportSheets(context, 'income_expense_${from.iso}_${to.iso}', [
-      ExportSheet(
-        name: 'عواید و مصارف',
-        notes: [
-          'عواید و مصارف ثبت‌شده از ${DateFormatFa.business(from)} تا ${DateFormatFa.business(to)} (به تفکیک ارز)',
-        ],
-        headers: const ['ارز', 'کد حساب', 'حساب', 'نوع', 'مبلغ'],
-        rows: [
-          for (final r in _rows)
-            [
-              _cur(s, r.currency),
-              r.accountCode,
-              r.accountName,
-              r.accountType == 'revenue' ? 'عاید' : 'مصرف',
-              MoneyFormat.amount(_amount(r), s.currency(r.currency)),
-            ],
-        ],
-      ),
-    ]);
-  }
-
   @override
   Widget build(BuildContext context) {
     final s = context.watch<AppSession>();
@@ -736,7 +577,6 @@ class _IncomeExpenseReportState extends _ReportState<_IncomeExpenseReport> {
             itemLabel: 'حساب',
             actions: [
               periodFilter(),
-              ExportButton(onPressed: () => _export(s)),
             ],
             emptyText: 'در این دوره عاید یا مصرفی ثبت نشده است.',
             columns: const [
@@ -796,32 +636,6 @@ class _GeneralLedgerReportState extends _ReportState<_GeneralLedgerReport> {
     });
   }
 
-  void _export(AppSession s) {
-    final a = _account, c = _currency;
-    if (a == null || c == null) return;
-    exportSheets(context, 'ledger_${a['code']}_${c.code}', [
-      ExportSheet(
-        name: 'دفتر کل',
-        notes: [
-          'دفتر کل ${a['code']} ${a['name_fa']} — ${c.nameFa} — ${DateFormatFa.business(from)} تا ${DateFormatFa.business(to)}',
-        ],
-        headers: const ['تاریخ', 'شماره سند', 'نوع', 'مشتری', 'بدهکار', 'بستانکار', 'مانده (بدهکار مثبت)'],
-        rows: [
-          for (final l in _lines)
-            [
-              DateFormatFa.business(l.tx.effectiveDate),
-              l.tx.referenceNo,
-              l.tx.type.labelFa,
-              l.tx.customerName ?? '',
-              MoneyFormat.amount(l.debit, c),
-              MoneyFormat.amount(l.credit, c),
-              MoneyFormat.amount(l.running, c),
-            ],
-        ],
-      ),
-    ]);
-  }
-
   @override
   Widget build(BuildContext context) {
     final s = context.watch<AppSession>();
@@ -865,7 +679,6 @@ class _GeneralLedgerReportState extends _ReportState<_GeneralLedgerReport> {
                 },
               ),
               periodFilter(),
-              ExportButton(onPressed: () => _export(s)),
             ],
             emptyText: 'برای این حساب و ارز در این دوره گردشی نیست.',
             columns: const [
@@ -931,42 +744,6 @@ class _ReconciliationHistoryReportState extends _ReportState<_ReconciliationHist
     'open' => 'باز',
     _ => r.status,
   };
-
-  void _export(AppSession s) {
-    exportSheets(context, 'reconciliation_${from.iso}_${to.iso}', [
-      ExportSheet(
-        name: 'بیلانس صندوق',
-        headers: const [
-          'تاریخ',
-          'صندوق',
-          'ارز',
-          'مانده اول',
-          'ورودی',
-          'خروجی',
-          'مورد انتظار',
-          'شمارش',
-          'اختلاف',
-          'وضعیت',
-        ],
-        rows: [
-          for (final r in _rows)
-            [
-              DateFormatFa.business(r.businessDate),
-              s.drawers.where((d) => d.id == r.drawerId).map((d) => d.nameFa).firstOrNull ?? '${r.drawerId}',
-              _cur(s, r.currency),
-              MoneyFormat.amount(r.openingMinor, s.currency(r.currency)),
-              MoneyFormat.amount(r.inflowMinor, s.currency(r.currency)),
-              MoneyFormat.amount(r.outflowMinor, s.currency(r.currency)),
-              MoneyFormat.amount(r.expectedMinor, s.currency(r.currency)),
-              MoneyFormat.amount(r.countedMinor, s.currency(r.currency)),
-              MoneyFormat.amount(r.differenceMinor, s.currency(r.currency)),
-              _status(r),
-            ],
-        ],
-      ),
-    ]);
-  }
-
   @override
   Widget build(BuildContext context) {
     final s = context.watch<AppSession>();
@@ -983,7 +760,6 @@ class _ReconciliationHistoryReportState extends _ReportState<_ReconciliationHist
             itemLabel: 'بیلانس',
             actions: [
               periodFilter(),
-              ExportButton(onPressed: () => _export(s)),
             ],
             emptyText: 'در این دوره بیلانسی ثبت نشده است.',
             columns: const [

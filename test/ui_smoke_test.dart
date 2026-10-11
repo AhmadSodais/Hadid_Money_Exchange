@@ -213,6 +213,11 @@ void main() {
       if (route == AppRoutes.settings) {
         final tiles = find.byType(SettingsNavTile);
         expect(tiles, findsWidgets);
+        final labels = [for (final e in tiles.evaluate()) (e.widget as SettingsNavTile).label];
+        expect(labels, containsAll(['اطلاعات صرافی', 'ورودی و خروجی اکسل', 'درباره برنامه']));
+        expect(labels, isNot(contains('انتقال از برنامه قبلی')));
+        expect(labels, isNot(contains('سوابق ممیزی و صحت دفاتر')));
+        expect(labels, isNot(contains('درباره و مجوز')));
         for (var i = 0; i < tiles.evaluate().length; i++) {
           final tile = tiles.at(i);
           final label = tester.widget<SettingsNavTile>(tile).label;
@@ -220,7 +225,19 @@ void main() {
           await settle(tester);
           expect(tester.takeException(), isNull, reason: 'settings section $label');
           expect(tester.widget<SettingsNavTile>(tiles.at(i)).selected, isTrue, reason: label);
+          if (label == 'ورودی و خروجی اکسل') {
+            expect(find.text('ورودی اکسل'), findsWidgets);
+            expect(find.text('خروجی اکسل'), findsWidgets);
+            expect(find.text('پاک کردن همه داده‌ها'), findsWidgets);
+          }
+          if (label == 'ظاهر') {
+            expect(find.text('تقویم نمایش'), findsNothing);
+            expect(find.text('کاهش انیمیشن‌ها'), findsNothing);
+          }
         }
+      }
+      if (route != AppRoutes.settings) {
+        expect(find.text('خروجی اکسل'), findsNothing, reason: 'no per-page Excel output on $route');
       }
     }
     await tester.pumpWidget(const SizedBox.shrink());

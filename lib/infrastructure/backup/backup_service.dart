@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:crypto/crypto.dart';
 import 'package:path/path.dart' as p;
+import 'package:shamsi_date/shamsi_date.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import '../../application/app_services.dart';
@@ -115,8 +116,9 @@ final class BackupService {
     await dir.create(recursive: true);
     final now = DateTime.now();
     String two(int v) => v.toString().padLeft(2, '0');
+    final j = Jalali.fromDateTime(now);
     final stamp =
-        '${now.year}${two(now.month)}${two(now.day)}_${two(now.hour)}${two(now.minute)}${two(now.second)}';
+        '${j.year}${two(j.month)}${two(j.day)}_${two(now.hour)}${two(now.minute)}${two(now.second)}';
     var target = p.join(dir.path, 'hadid_backup_${stamp}_$kind.db');
     var n = 1;
     while (await File(target).exists()) {
@@ -248,56 +250,92 @@ final class BackupService {
       throw BusinessRuleError('backup.invalid',
           'پشتیبان معتبر نیست و بازیابی انجام نشد: ${check.problems.join('؛ ')}');
     }
-    final safety = await create(kind: 'pre_restore', actor: actor);
-
-    final live = _app.databasePath;
-    final staging = '$live.restore-staging';
-    final previous = '$live.pre-restore-${DateTime.now().millisecondsSinceEpoch}';
+    final staging = '${_app.databasePath}.restore-staging';
     await File(path).copy(staging);
+    await replaceLive(
+      staging,
+      actor,
+      action: 'backup.restore',
+      entityId: p.basename(path),
+      failureCode: 'backup.restoreFailed',
+      failureMessage: 'بازیابی ناکام شد و پایگاه داده قبلی برگردانده شد',
+    );
+  }
 
-    await _app.db.close();
+  /// Swaps the closed SQLite file at [stagingPath] in as the live database.
+  ///
+  /// A verified safety backup of the current database is taken first, the
+  /// new file must pass the ledger integrity checks, and any failure puts the
+  /// previous file back. [stagingPath] is always deleted afterwards.
+  Future<void> replaceLive(
+    String stagingPath,
+    Actor actor, {
+    required String action,
+    required String entityId,
+    required String failureCode,
+    required String failureMessage,
+    bool keepBackupHistory = false,
+  }) async {
     try {
-      await File(live).rename(previous);
       for (final suffix in ['-wal', '-shm']) {
-        final f = File('$live$suffix');
-        if (await f.exists()) await f.delete();
+        if (await File('$stagingPath$suffix').exists()) {
+          throw StateError('staging database was not closed cleanly');
+        }
       }
-      await File(staging).rename(live);
-      final db = await ExchangeDatabase.open(live);
-      final problems = await LedgerQueries(db).integrityProblems();
-      if (problems.isNotEmpty) {
-        await db.close();
-        throw StateError(problems.join('; '));
+      final safety = await create(kind: 'pre_restore', actor: actor);
+      final history = keepBackupHistory
+          ? await _app.db.query('backup_history', orderBy: 'id')
+          : const <Map<String, Object?>>[];
+
+      final live = _app.databasePath;
+      final previous = '$live.pre-restore-${DateTime.now().millisecondsSinceEpoch}';
+      await _app.db.close();
+      try {
+        await File(live).rename(previous);
+        for (final suffix in ['-wal', '-shm']) {
+          final f = File('$live$suffix');
+          if (await f.exists()) await f.delete();
+        }
+        await File(stagingPath).rename(live);
+        final db = await ExchangeDatabase.open(live);
+        final problems = await LedgerQueries(db).integrityProblems();
+        if (problems.isNotEmpty) {
+          await db.close();
+          throw StateError(problems.join('; '));
+        }
+        _app.rebind(db);
+        await db.transaction((txn) async {
+          for (final row in history) {
+            await txn.insert('backup_history', {...row}..remove('id'));
+          }
+          await txn.insert('backup_history', {
+            'kind': 'pre_restore',
+            'file_path': safety.databaseFile.path,
+            'created_at': safety.manifest.createdAt.toIso8601String(),
+            'schema_version': safety.manifest.schemaVersion,
+            'size_bytes': safety.manifest.sizeBytes,
+            'sha256': safety.manifest.sha256,
+          });
+          await AuditWriter.write(txn,
+              actor: actor,
+              action: action,
+              entityType: 'database',
+              entityId: entityId,
+              after: {'safety_backup': p.basename(safety.databaseFile.path)});
+        });
+        await File(previous).delete();
+      } catch (e) {
+        if (await File(live).exists()) await File(live).delete();
+        if (await File(previous).exists()) {
+          await File(previous).rename(live);
+        } else {
+          await File(safety.databaseFile.path).copy(live);
+        }
+        _app.rebind(await ExchangeDatabase.open(live));
+        throw PersistenceError(failureCode, '$failureMessage: $e', cause: e);
       }
-      _app.rebind(db);
-      await db.insert('backup_history', {
-        'kind': 'pre_restore',
-        'file_path': safety.databaseFile.path,
-        'created_at': safety.manifest.createdAt.toIso8601String(),
-        'schema_version': safety.manifest.schemaVersion,
-        'size_bytes': safety.manifest.sizeBytes,
-        'sha256': safety.manifest.sha256,
-      });
-      await AuditWriter.write(db,
-          actor: actor,
-          action: 'backup.restore',
-          entityType: 'backup',
-          entityId: p.basename(path),
-          after: {'safety_backup': p.basename(safety.databaseFile.path)});
-      await File(previous).delete();
-    } catch (e) {
-      // Roll back to the pre-restore database file.
-      if (await File(live).exists()) await File(live).delete();
-      if (await File(previous).exists()) {
-        await File(previous).rename(live);
-      } else {
-        await File(safety.databaseFile.path).copy(live);
-      }
-      _app.rebind(await ExchangeDatabase.open(live));
-      throw PersistenceError('backup.restoreFailed',
-          'بازیابی ناکام شد و پایگاه داده قبلی برگردانده شد: $e', cause: e);
     } finally {
-      if (await File(staging).exists()) await File(staging).delete();
+      if (await File(stagingPath).exists()) await File(stagingPath).delete();
     }
     _app.events.notify(LedgerChange.restore);
   }
@@ -327,7 +365,11 @@ final class BackupService {
         .where((e) => e is File && RegExp(r'hadid_backup_.*_auto(_\d+)?\.db$').hasMatch(e.path))
         .cast<File>()
         .toList();
-    autos.sort((a, b) => b.path.compareTo(a.path));
+    final modified = {for (final f in autos) f.path: await f.lastModified()};
+    autos.sort((a, b) {
+      final byTime = modified[b.path]!.compareTo(modified[a.path]!);
+      return byTime != 0 ? byTime : b.path.compareTo(a.path);
+    });
     for (final old in autos.skip(keep)) {
       await old.delete();
       final m = File(manifestPathFor(old.path));

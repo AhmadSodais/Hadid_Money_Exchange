@@ -35,7 +35,10 @@ import '../widgets/settings_kit.dart';
 
 part 'settings_about_section.dart';
 
-enum _Section { policies, openingCash, currencies, appLock, backup, legacyImport, audit, appearance, about }
+enum _Section { policies, openingCash, currencies, appLock, backup, data, legacyImport, audit, appearance, about }
+
+/// Kept in code but not offered in the settings navigation.
+const _hiddenSections = {_Section.legacyImport, _Section.audit};
 
 Future<void> _openPath(String path) async {
   try {
@@ -56,15 +59,16 @@ class SettingsPage extends StatefulWidget {
 
 class _SettingsPageState extends State<SettingsPage> {
   static const _nav = <SettingsNavEntry<_Section>>[
-    SettingsNavEntry(_Section.policies, Icons.tune_outlined, 'سیاست‌های ثبت'),
+    SettingsNavEntry(_Section.policies, Icons.storefront_outlined, 'اطلاعات صرافی'),
     SettingsNavEntry(_Section.openingCash, Icons.account_balance_wallet_outlined, 'سرمایه اولیه صندوق'),
     SettingsNavEntry(_Section.currencies, Icons.currency_exchange, 'ارزها'),
     SettingsNavEntry(_Section.appLock, Icons.lock_outline, 'امنیت برنامه'),
     SettingsNavEntry(_Section.backup, Icons.folder_outlined, 'پشتیبان‌گیری و بازیابی'),
+    SettingsNavEntry(_Section.data, Icons.table_view_outlined, 'ورودی و خروجی اکسل'),
     SettingsNavEntry(_Section.legacyImport, Icons.move_down, 'انتقال از برنامه قبلی'),
     SettingsNavEntry(_Section.audit, Icons.fact_check_outlined, 'سوابق ممیزی و صحت دفاتر'),
     SettingsNavEntry(_Section.appearance, Icons.palette_outlined, 'ظاهر'),
-    SettingsNavEntry(_Section.about, Icons.info_outline, 'درباره و مجوز'),
+    SettingsNavEntry(_Section.about, Icons.info_outline, 'درباره برنامه'),
   ];
 
   final _search = TextEditingController();
@@ -79,7 +83,9 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   bool _visible(AppSession s, _Section section) => switch (section) {
+        _ when _hiddenSections.contains(section) => false,
         _Section.policies => s.can(Permissions.settingsManage),
+        _Section.data => s.can(Permissions.backupCreate) || s.can(Permissions.backupRestore),
         _Section.openingCash => s.can(Permissions.openingBalancesPost),
         _Section.legacyImport => s.can(Permissions.openingBalancesPost) && s.can(Permissions.backupRestore),
         _Section.audit => s.can(Permissions.auditView),
@@ -110,7 +116,7 @@ class _SettingsPageState extends State<SettingsPage> {
 
     return PageScaffold(
       title: 'تنظیمات',
-      subtitle: 'سیاست‌های ثبت، ارزها، امنیت، پشتیبان‌گیری و ظاهر برنامه',
+      subtitle: 'اطلاعات صرافی، ارزها، امنیت، پشتیبان‌گیری، ورودی و خروجی اکسل و ظاهر برنامه',
       searchController: _search,
       searchHint: 'جستجو در تنظیمات...',
       onSearch: _onSearch,
@@ -168,13 +174,14 @@ class _SettingsContent extends StatelessWidget {
           if (s.can(Permissions.settingsManage)) _AutoBackupCard(metrics: metrics),
           const SizedBox(height: 460, child: _BackupHistoryTable()),
         ],
+      _Section.data => [_DataTransferCard(metrics: metrics)],
       _Section.legacyImport => [LegacyImportCard(metrics: metrics)],
       _Section.audit => [
           _IntegrityCard(metrics: metrics),
           const SizedBox(height: 560, child: _AuditTable()),
         ],
       _Section.appearance => [_AppearanceCard(metrics: metrics)],
-      _Section.about => [_LicenseCard(metrics: metrics), _AboutCard(metrics: metrics)],
+      _Section.about => [_AboutCard(metrics: metrics)],
     };
 
     return ListView.separated(
@@ -251,11 +258,11 @@ class _PoliciesCardState extends State<_PoliciesCard> with RevisionReload {
   Widget build(BuildContext context) {
     final m = widget.metrics;
     return SettingsSectionCard(
-      icon: Icons.tune_outlined,
-      title: 'سیاست‌های ثبت',
+      icon: Icons.storefront_outlined,
+      title: 'اطلاعات صرافی',
       padding: m.cardPadding,
       footer: Text(
-        'این سیاست‌ها روی همه کاربران و همه صندوق‌ها اعمال می‌شود و هر تغییر در سوابق ممیزی ثبت می‌شود.',
+        'این تنظیمات روی همه کاربران و همه صندوق‌ها اعمال می‌شود.',
         style: AppTypography.caption.copyWith(color: AppColors.textSecondary),
       ),
       actions: [
@@ -379,7 +386,7 @@ class _OpeningCashCardState extends State<_OpeningCashCard> {
       padding: m.cardPadding,
       footer: const SettingsFooterNote(
         'سرمایه اولیه هر ارز برای هر صندوق فقط یک بار ثبت می‌شود و پس از آن موجودی فقط از معاملات محاسبه می‌شود. '
-        'برای اصلاح، سند سرمایه اولیه را از روزنامچه برگشت کنید و دوباره ثبت کنید.',
+        'برای اصلاح، سند سرمایه اولیه را از روزنامچه ویرایش یا حذف کنید.',
       ),
       actions: [
         GfPrimaryButton(
@@ -905,7 +912,7 @@ class _BackupCardState extends State<_BackupCard> with RevisionReload {
 String _kindLabel(String kind) => switch (kind) {
       'manual' => 'دستی',
       'auto' => 'خودکار',
-      'pre_restore' => 'ایمنی قبل از بازیابی',
+      'pre_restore' => 'ایمنی (قبل از جایگزینی داده‌ها)',
       _ => kind,
     };
 
@@ -1282,112 +1289,171 @@ class _AppearanceCard extends StatelessWidget {
               );
             },
           ),
-          SizedBox(height: metrics.gap),
-          SettingsFormRow(
-            gap: metrics.fieldGap,
-            left: GfDropdown<AppCalendarType>(
-              label: 'تقویم نمایش',
-              required: true,
-              prefixIcon: Icons.calendar_month_outlined,
-              items: const [AppCalendarType.solar, AppCalendarType.gregorian, AppCalendarType.lunar],
-              value: app.calendarType,
-              labelBuilder: (t) => switch (t) {
-                AppCalendarType.solar => 'هجری شمسی',
-                AppCalendarType.gregorian => 'میلادی',
-                AppCalendarType.lunar => 'هجری قمری',
-              },
-              onChanged: (t) {
-                if (t != null) app.setCalendarType(t);
-              },
-            ),
-            right: GfToggleCard(
-              label: 'کاهش انیمیشن‌ها',
-              subtitle: 'انیمیشن‌های جابه‌جایی و تغییر پوسته حذف می‌شوند.',
-              value: app.reducedMotion,
-              onChanged: app.setReducedMotion,
-            ),
-          ),
-          SizedBox(height: metrics.fieldGap * 0.5),
-          Text(
-            'تاریخ‌ها در پایگاه داده همیشه به‌صورت میلادی (ISO) ذخیره می‌شوند؛ تقویم فقط نمایش را تغییر می‌دهد.',
-            style: AppTypography.caption.copyWith(color: AppColors.textSecondary, height: 1.4),
-          ),
         ],
       ),
     );
   }
 }
 
-// ------------------------------------------------------------------- about
+// ------------------------------------------------------------- excel data
 
-class _LicenseCard extends StatelessWidget {
-  const _LicenseCard({required this.metrics});
+class _DataTransferCard extends StatefulWidget {
+  const _DataTransferCard({required this.metrics});
 
   final SettingsMetrics metrics;
 
-  Widget _pathField(String label, String path, String openTarget) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Text(label, style: AppTypography.label),
-        const SizedBox(height: 6),
-        Row(
-          children: [
-            Expanded(
-              child: GfTextField(
-                key: ValueKey(path),
-                initialValue: path,
-                readOnly: true,
-                prefixIcon: Icons.folder_open_outlined,
-              ),
-            ),
-            const SizedBox(width: 8),
-            GfIconButton(
-              icon: Icons.open_in_new,
-              tooltip: 'باز کردن پوشه',
-              size: 48,
-              onPressed: () => _openPath(openTarget),
-            ),
-          ],
-        ),
-      ],
+  @override
+  State<_DataTransferCard> createState() => _DataTransferCardState();
+}
+
+class _DataTransferCardState extends State<_DataTransferCard> {
+  bool _busy = false;
+
+  Future<T?> _run<T>(Future<T> Function() action, {String? success}) async {
+    setState(() => _busy = true);
+    final result = await runAction(context, action, success: success);
+    if (mounted) setState(() => _busy = false);
+    return result;
+  }
+
+  Future<bool> _confirmWord(String title, String message, String word, String confirmLabel) async {
+    final typed = await askReason(
+      context,
+      title: title,
+      message: '$message برای ادامه، کلمه «$word» را بنویسید.',
+      confirmLabel: confirmLabel,
+    );
+    if (typed == null || !mounted) return false;
+    if (typed.trim() != word) {
+      GfToast.warning(context, 'کلمه تأیید درست نیست؛ عملیات انجام نشد.');
+      return false;
+    }
+    return true;
+  }
+
+  Future<void> _export() async {
+    final s = context.read<AppSession>();
+    final stamp = AppCalendar.formatDate(DateTime.now()).replaceAll('/', '-');
+    final picked = await FilePicker.platform.saveFile(
+      dialogTitle: 'خروجی اکسل همه داده‌ها',
+      fileName: 'hadid_data_$stamp.xlsx',
+      type: FileType.custom,
+      allowedExtensions: const ['xlsx'],
+      lockParentWindow: true,
+    );
+    if (picked == null || !mounted) return;
+    final path = picked.toLowerCase().endsWith('.xlsx') ? picked : '$picked.xlsx';
+    final summary = await _run(() => s.services.transfer.exportTo(path, s.actor));
+    if (summary == null || !mounted) return;
+    GfToast.success(
+      context,
+      'خروجی اکسل ذخیره شد (${summary['transactions'] ?? 0} معامله، '
+      '${summary['customers'] ?? 0} مشتری): ${p.basename(path)}',
+    );
+  }
+
+  Future<void> _import() async {
+    final s = context.read<AppSession>();
+    final picked = await FilePicker.platform.pickFiles(
+      dialogTitle: 'انتخاب فایل اکسل برای ورود داده‌ها',
+      type: FileType.custom,
+      allowedExtensions: const ['xlsx'],
+      lockParentWindow: true,
+    );
+    final path = picked?.files.single.path;
+    if (path == null || !mounted) return;
+    final ok = await _confirmWord(
+      'ورودی اکسل',
+      'همه داده‌های فعلی برنامه با محتوای «${p.basename(path)}» جایگزین می‌شود. '
+          'فایل پیش از جایگزینی کامل بررسی می‌شود و یک پشتیبان ایمنی از وضعیت فعلی گرفته می‌شود.',
+      'جایگزینی',
+      'ورود داده‌ها',
+    );
+    if (!ok) return;
+    await _run(
+      () => s.services.transfer.importFrom(path, s.actor),
+      success: 'داده‌ها از فایل اکسل وارد شد. پشتیبان ایمنی وضعیت قبلی نگهداری شده است.',
+    );
+  }
+
+  Future<void> _clear() async {
+    final s = context.read<AppSession>();
+    final ok = await _confirmWord(
+      'پاک کردن همه داده‌ها',
+      'همه مشتریان، معاملات، نرخ‌ها، بیلانس‌های روزانه و سوابق حذف می‌شوند. '
+          'اطلاعات صرافی، سیاست‌ها و تعریف ارزها باقی می‌ماند. '
+          'پیش از پاک کردن یک پشتیبان ایمنی گرفته می‌شود که از بخش پشتیبان‌گیری قابل بازیابی است.',
+      'پاک کردن',
+      'پاک کردن همه داده‌ها',
+    );
+    if (!ok) return;
+    await _run(
+      () => s.services.transfer.clearAll(s.actor),
+      success: 'همه داده‌ها پاک شد. پشتیبان ایمنی داده‌های قبلی نگهداری شده است.',
     );
   }
 
   @override
   Widget build(BuildContext context) {
     final s = context.watch<AppSession>();
-    final dbPath = s.services.databasePath;
+    final m = widget.metrics;
+    final canRestore = s.can(Permissions.backupRestore);
     return SettingsSectionCard(
-      icon: Icons.verified_user_outlined,
-      title: 'درباره و مجوز',
-      padding: metrics.cardPadding,
-      trailing: GfStatusBadge(
-        label: 'نسخه ${AppConstants.appVersion}',
-        color: AppColors.primary,
-        compact: true,
-      ),
+      icon: Icons.table_view_outlined,
+      title: 'ورودی و خروجی اکسل',
+      padding: m.cardPadding,
       footer: const SettingsFooterNote(
-        'مجوز استفاده هرگز دسترسی به داده‌های مالی را مسدود نمی‌کند: '
-        'مشاهده، گزارش‌گیری، پشتیبان‌گیری و خروجی همیشه در دسترس است.',
-        warning: false,
+        'فایل اکسل شامل همه داده‌های برنامه است و تاریخ‌ها در آن هجری شمسی ثبت می‌شوند. '
+        'برای ورود، فقط فایلی را انتخاب کنید که از «خروجی اکسل» همین برنامه گرفته شده است.',
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          OrderDetailSummaryCard(
-            rows: [
-              OrderDetailSummaryRow(label: 'برنامه', value: AppConstants.appName),
-              OrderDetailSummaryRow(label: 'نام لاتین', value: AppConstants.appNameLatin, ltrValue: true),
-              OrderDetailSummaryRow(label: 'نسخه', value: AppConstants.appVersion, ltrValue: true),
+          SettingsTransferGroup(
+            title: 'اکسل',
+            children: [
+              DialogResponsiveRow(
+                gap: m.fieldGap,
+                breakpoint: 760,
+                children: [
+                  if (s.can(Permissions.backupCreate))
+                    SettingsTransferAction(
+                      icon: Icons.file_download_outlined,
+                      title: 'خروجی اکسل',
+                      hint: 'همه داده‌ها (مشتریان، معاملات، نرخ‌ها، بیلانس‌ها و تنظیمات) در یک فایل اکسل ذخیره می‌شود.',
+                      buttonLabel: _busy ? 'در حال انجام…' : 'خروجی اکسل',
+                      busy: _busy,
+                      onPressed: _busy ? null : _export,
+                    ),
+                  if (canRestore)
+                    SettingsTransferAction(
+                      icon: Icons.file_upload_outlined,
+                      title: 'ورودی اکسل',
+                      hint: 'داده‌های فعلی با فایل اکسل جایگزین می‌شود؛ فایل نادرست یا ناقص پذیرفته نمی‌شود.',
+                      buttonLabel: 'ورودی اکسل',
+                      danger: true,
+                      onPressed: _busy ? null : _import,
+                    ),
+                ],
+              ),
             ],
           ),
-          SizedBox(height: metrics.fieldGap),
-          SettingsFormRow(
-            gap: metrics.fieldGap,
-            left: _pathField('پایگاه داده', dbPath, p.dirname(dbPath)),
-            right: _pathField('پشتیبان‌ها', s.services.backupDirectory, s.services.backupDirectory),
-          ),
+          if (canRestore) ...[
+            SizedBox(height: m.gap),
+            SettingsTransferGroup(
+              title: 'پاک کردن داده‌ها',
+              children: [
+                SettingsTransferAction(
+                  icon: Icons.delete_forever_outlined,
+                  title: 'پاک کردن همه داده‌ها',
+                  hint: 'برنامه به حالت شروع برمی‌گردد؛ اطلاعات صرافی و ارزها باقی می‌ماند و پشتیبان ایمنی گرفته می‌شود.',
+                  buttonLabel: 'پاک کردن همه داده‌ها',
+                  danger: true,
+                  onPressed: _busy ? null : _clear,
+                ),
+              ],
+            ),
+          ],
         ],
       ),
     );

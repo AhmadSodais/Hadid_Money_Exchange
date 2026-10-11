@@ -5,8 +5,8 @@ import '../../core/constants/app_constants.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/utils/app_calendar.dart';
 
-/// UI preferences only (theme, sidebar, calendar). Financial settings are
-/// stored in the database and changed through `CatalogService`.
+/// UI preferences only (theme, sidebar). Financial settings are stored in
+/// the database and changed through `CatalogService`.
 class AppSettingsProvider extends ChangeNotifier {
   AppSettingsProvider(this._prefs) {
     AppCalendar.apply(calendarType);
@@ -17,14 +17,10 @@ class AppSettingsProvider extends ChangeNotifier {
   bool get sidebarCollapsed =>
       _prefs.getBool(AppConstants.prefSidebarCollapsed) ?? false;
 
-  bool get reducedMotion =>
-      _prefs.getBool(AppConstants.prefReducedMotion) ?? false;
+  bool get reducedMotion => false;
 
-  /// Calendar: solar (default for Afghanistan) | gregorian | lunar.
-  AppCalendarType get calendarType {
-    final raw = _prefs.getString(AppConstants.prefCalendarType);
-    return raw == null ? AppCalendarType.solar : AppCalendarType.parse(raw);
-  }
+  /// Every date is shown and entered in the Solar Hijri calendar.
+  AppCalendarType get calendarType => AppCalendarType.solar;
 
   String get themeModeKey =>
       _prefs.getString(AppConstants.prefThemeMode) ?? 'light';
@@ -56,17 +52,6 @@ class AppSettingsProvider extends ChangeNotifier {
   }
 
   Future<void> toggleSidebar() => setSidebarCollapsed(!sidebarCollapsed);
-
-  Future<void> setReducedMotion(bool value) async {
-    await _prefs.setBool(AppConstants.prefReducedMotion, value);
-    notifyListeners();
-  }
-
-  Future<void> setCalendarType(AppCalendarType type) async {
-    await _prefs.setString(AppConstants.prefCalendarType, type.storageKey);
-    AppCalendar.apply(type);
-    notifyListeners();
-  }
 
   Future<void> setThemeMode(ThemeMode mode) async {
     final key = mode == ThemeMode.dark ? 'dark' : 'light';

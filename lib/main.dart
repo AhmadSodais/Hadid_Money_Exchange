@@ -64,7 +64,7 @@ Future<void> main() async {
 
   final prefs = await SharedPreferences.getInstance();
   await prefs.remove('locale');
-  AppCalendar.applyFromKey(prefs.getString(AppConstants.prefCalendarType));
+  AppCalendar.apply(AppCalendarType.solar);
 
   AppSession? session;
   String? startupError;

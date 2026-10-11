@@ -11,7 +11,7 @@ enum AppCalendarType {
   solar,
   lunar;
 
-  static const defaultType = AppCalendarType.gregorian;
+  static const defaultType = AppCalendarType.solar;
 
   static AppCalendarType parse(String? raw) {
     switch ((raw ?? '').trim().toLowerCase()) {

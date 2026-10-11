@@ -12,7 +12,10 @@ final class SchemaMigration {
 
   final int version;
   final String name;
-  final Future<void> Function(Transaction txn) up;
+
+  /// [seed] is false only for an empty target that is about to be filled
+  /// from a full-data import.
+  final Future<void> Function(Transaction txn, bool seed) up;
 }
 
 /// Opens and migrates the single operational database.
@@ -23,13 +26,13 @@ abstract final class ExchangeDatabase {
   static const String fileName = 'hadid_exchange.db';
 
   static final List<SchemaMigration> migrations = [
-    SchemaMigration(1, 'initial_exchange_schema', (txn) async {
+    SchemaMigration(1, 'initial_exchange_schema', (txn, seed) async {
       for (final sql in schemaV1) {
         await txn.execute(sql);
       }
-      await _seed(txn);
+      if (seed) await _seed(txn);
     }),
-    SchemaMigration(2, 'transaction_corrections', (txn) async {
+    SchemaMigration(2, 'transaction_corrections', (txn, seed) async {
       for (final sql in schemaV2) {
         await txn.execute(sql);
       }
@@ -49,7 +52,7 @@ abstract final class ExchangeDatabase {
   }
 
   /// Opens [path], enables integrity pragmas, and applies pending migrations.
-  static Future<Database> open(String path, {bool readOnly = false}) async {
+  static Future<Database> open(String path, {bool readOnly = false, bool seed = true}) async {
     final db = await factory.openDatabase(
       path,
       options: OpenDatabaseOptions(
@@ -65,7 +68,7 @@ abstract final class ExchangeDatabase {
         },
       ),
     );
-    if (!readOnly) await migrate(db);
+    if (!readOnly) await migrate(db, seed: seed);
     return db;
   }
 
@@ -80,7 +83,7 @@ abstract final class ExchangeDatabase {
     return rows.first['v'] as int;
   }
 
-  static Future<void> migrate(Database db) async {
+  static Future<void> migrate(Database db, {bool seed = true}) async {
     await db.execute('''
       CREATE TABLE IF NOT EXISTS schema_migrations (
         version INTEGER PRIMARY KEY,
@@ -96,7 +99,7 @@ abstract final class ExchangeDatabase {
     }
     for (final m in migrations.where((m) => m.version > current)) {
       await db.transaction((txn) async {
-        await m.up(txn);
+        await m.up(txn, seed);
         await txn.insert('schema_migrations', {
           'version': m.version,
           'name': m.name,
