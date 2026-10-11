@@ -1,0 +1,17 @@
+{
+  "rules": {
+    "users": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && auth.uid === $uid",
+        "$root": {
+          "$collection": {
+            "$id": {
+              ".validate": "!data.hasChild('version') || (newData.child('version').isNumber() && newData.child('version').val() > data.child('version').val())"
+            }
+          }
+        }
+      }
+    }
+  }
+}

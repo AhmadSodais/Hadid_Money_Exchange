@@ -1,0 +1,4 @@
+build/
+.dart_tool/
+windows/flutter/ephemeral/
+*.db
