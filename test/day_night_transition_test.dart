@@ -3,9 +3,9 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:pos_general/core/theme/app_colors.dart';
-import 'package:pos_general/core/theme/app_durations.dart';
-import 'package:pos_general/core/theme/day_night_transition.dart';
+import 'package:hadid_exchange/core/theme/app_colors.dart';
+import 'package:hadid_exchange/core/theme/app_durations.dart';
+import 'package:hadid_exchange/core/theme/day_night_transition.dart';
 
 const _light = Color(0xFFFFFFFF);
 const _dark = Color(0xFF000000);
@@ -38,10 +38,11 @@ class _HarnessState extends State<_Harness> {
     return RepaintBoundary(
       key: _surfaceKey,
       child: DayNightThemeTransition(
-        themeMode: mode,
+        variant: mode == ThemeMode.dark ? AppThemeVariant.dark : AppThemeVariant.light,
         reduceMotion: widget.reduceMotion,
-        builder: (context, themeMode) {
+        builder: (context, variant) {
           builds++;
+          final themeMode = variant.themeMode;
           final dark = themeMode == ThemeMode.dark;
           return MaterialApp(
             debugShowCheckedModeBanner: false,

@@ -1,0 +1,285 @@
+import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+
+import '../../application/ledger_queries.dart';
+import '../../application/read_models.dart';
+import '../../core/constants/app_assets.dart';
+import '../../core/theme/app_colors.dart';
+import '../../core/theme/app_spacing.dart';
+import '../../core/theme/app_typography.dart';
+import '../../core/widgets/widgets.dart';
+import '../../domain/money/currency.dart';
+import '../../domain/shared/business_date.dart';
+import '../../domain/transactions/financial_command.dart';
+import '../../infrastructure/export/excel_export.dart';
+import '../format/money_format.dart';
+import '../session/app_session.dart';
+import '../widgets/app_shell.dart';
+import '../widgets/exchange_ui.dart';
+import '../widgets/export_action.dart';
+import '../widgets/transaction_detail_dialog.dart';
+
+/// روزنامچه: every transaction of every type in one place. Filters combine
+/// (AND); none overrides another. Records are read-only here — corrections
+/// are made by reversal from the detail dialog.
+class JournalPage extends StatefulWidget {
+  const JournalPage({super.key});
+
+  @override
+  State<JournalPage> createState() => _JournalPageState();
+}
+
+class _JournalPageState extends State<JournalPage> with RevisionReload {
+  final _search = TextEditingController();
+  DateFilterValue _dateFilter = DateFilterValue.thisMonth();
+  _TypeFilter _typeFilter = _TypeFilter.all;
+  TransactionStatus? _status;
+  Currency? _currency;
+  int _page = 1;
+  int _pageSize = 20;
+  int _total = 0;
+  bool _loading = true;
+  List<PostedTransaction> _rows = const [];
+
+  @override
+  void dispose() {
+    _search.dispose();
+    super.dispose();
+  }
+
+  JournalFilter get _filter => JournalFilter(
+        from: BusinessDate.fromDateTime(_dateFilter.from),
+        to: BusinessDate.fromDateTime(_dateFilter.to),
+        types: _typeFilter.types,
+        status: _status,
+        currency: _currency?.code,
+        text: _search.text,
+      );
+
+  @override
+  Future<void> reload() async {
+    final q = session.services.queries;
+    final filter = _filter;
+    final total = await q.journalCount(filter);
+    final pages = total == 0 ? 1 : (total - 1) ~/ _pageSize + 1;
+    if (_page > pages) _page = pages;
+    final rows = await q.journal(filter, limit: _pageSize, offset: (_page - 1) * _pageSize);
+    if (!mounted) return;
+    setState(() {
+      _rows = rows;
+      _total = total;
+      _loading = false;
+    });
+  }
+
+  void _refilter() {
+    _page = 1;
+    reload();
+  }
+
+  String _details(PostedTransaction t, AppSession s) {
+    final src = s.currency(t.sourceCurrency);
+    if (t.isExchange) {
+      return '${MoneyFormat.withName(t.sourceAmountMinor ?? 0, src)} × ${MoneyFormat.rate(t.rate ?? '')} = '
+          '${MoneyFormat.withName(t.destAmountMinor ?? 0, s.currency(t.destCurrency))}';
+    }
+    if (t.signedAmountMinor != null) {
+      return MoneyFormat.withName(t.signedAmountMinor!, src);
+    }
+    if (t.sourceAmountMinor != null) return MoneyFormat.withName(t.sourceAmountMinor!, src);
+    return t.description ?? '';
+  }
+
+  Future<void> _export() async {
+    final s = context.read<AppSession>();
+    final rows = await s.services.queries.journal(_filter, limit: 100000, newestFirst: false);
+    if (!mounted) return;
+    await exportSheets(context, 'journal', [
+      ExportSheet(
+        name: 'روزنامچه',
+        headers: const [
+          'تاریخ', 'شماره سند', 'نوع', 'مشتری', 'ارز مبدأ', 'مبلغ', 'نرخ', 'ارز مقابل', 'مبلغ مقابل',
+          'کمیشن', 'شرح', 'وضعیت', 'ثبت‌کننده',
+        ],
+        rows: [
+          for (final t in rows)
+            [
+              DateFormatFa.business(t.effectiveDate),
+              t.referenceNo,
+              t.type.labelFa,
+              t.customerName ?? '',
+              t.sourceCurrency ?? '',
+              t.signedAmountMinor != null
+                  ? MoneyFormat.amount(t.signedAmountMinor!, s.currency(t.sourceCurrency))
+                  : (t.sourceAmountMinor == null ? '' : MoneyFormat.amount(t.sourceAmountMinor!, s.currency(t.sourceCurrency))),
+              t.rate ?? '',
+              t.destCurrency ?? '',
+              t.destAmountMinor == null ? '' : MoneyFormat.amount(t.destAmountMinor!, s.currency(t.destCurrency)),
+              t.feeAmountMinor == null
+                  ? ''
+                  : '${MoneyFormat.amount(t.feeAmountMinor!, s.currency(t.feeCurrency))} ${t.feeCurrency}',
+              t.description ?? '',
+              t.status == TransactionStatus.reversed ? 'برگشت‌شده' : 'ثبت‌شده',
+              t.createdByName ?? '',
+            ],
+        ],
+      ),
+    ]);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final s = context.watch<AppSession>();
+    return PageScaffold(
+      title: 'روزنامچه معاملات',
+      subtitle: 'همه معاملات؛ اصلاح فقط با برگشت کامل (بدون ویرایش یا حذف)',
+      searchController: _search,
+      searchHint: 'شماره سند، شرح یا نام مشتری',
+      onSearch: (_) => _refilter(),
+      actions: [
+        GfDateFilter(
+          value: _dateFilter,
+          onChanged: (v) {
+            setState(() => _dateFilter = v);
+            _refilter();
+          },
+        ),
+        ExportButton(onPressed: _export),
+      ],
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              GfCountBox(label: 'تعداد معاملات', count: _total, icon: AppAssets.invoiceFilled),
+              const SizedBox(width: 12),
+              Expanded(
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: [
+                      for (final f in _TypeFilter.values) ...[
+                        if (f != _TypeFilter.values.first) const SizedBox(width: 8),
+                        GfFilterChip(
+                          label: f.label,
+                          selected: _typeFilter == f,
+                          onTap: () {
+                            setState(() => _typeFilter = f);
+                            _refilter();
+                          },
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          Expanded(
+            child: LedgerTable(
+              title: 'معاملات ثبت‌شده',
+              subtitle: 'برای دیدن جزئیات و برگشت، روی ردیف کلیک کنید.',
+              isLoading: _loading,
+              minWidth: 1050,
+              itemLabel: 'معامله',
+              emptyText: 'معامله‌ای یافت نشد.',
+              emptyHint: 'بازه تاریخ یا فیلترها را تغییر دهید.',
+              actions: [
+                GfDropdown<TransactionStatus?>(
+                  width: 150,
+                  hint: 'همه وضعیت‌ها',
+                  prefixIcon: Icons.flag_outlined,
+                  items: const [null, TransactionStatus.posted, TransactionStatus.reversed],
+                  value: _status,
+                  labelBuilder: (t) => switch (t) {
+                    null => 'همه وضعیت‌ها',
+                    TransactionStatus.posted => 'ثبت‌شده',
+                    TransactionStatus.reversed => 'برگشت‌شده',
+                  },
+                  onChanged: (t) {
+                    _status = t;
+                    _refilter();
+                  },
+                ),
+                GfDropdown<Currency?>(
+                  width: 150,
+                  hint: 'همه ارزها',
+                  prefixIcon: Icons.currency_exchange,
+                  items: [null, ...s.activeCurrencies],
+                  value: _currency,
+                  labelBuilder: (c) => c == null ? 'همه ارزها' : c.nameFa,
+                  onChanged: (c) {
+                    _currency = c;
+                    _refilter();
+                  },
+                ),
+              ],
+              columns: const [
+                LedgerColumn('تاریخ', width: 105),
+                LedgerColumn('شماره سند', width: 125),
+                LedgerColumn('نوع', width: 120),
+                LedgerColumn('مشتری', flex: 2),
+                LedgerColumn('جزئیات', flex: 4),
+                LedgerColumn('وضعیت', width: 95),
+              ],
+              rows: [
+                for (final t in _rows)
+                  [
+                    Text(DateFormatFa.business(t.effectiveDate), style: AppTypography.body),
+                    Text(t.referenceNo, style: AppTypography.caption, textDirection: TextDirection.ltr),
+                    Text(t.type.labelFa, style: AppTypography.bodyMedium),
+                    Text(t.customerName ?? '—', style: AppTypography.body),
+                    Text(_details(t, s), style: AppTypography.body),
+                    Text(
+                      t.status == TransactionStatus.reversed ? 'برگشت‌شده' : 'ثبت‌شده',
+                      style: AppTypography.caption.copyWith(
+                        color: t.status == TransactionStatus.reversed ? AppColors.warning : AppColors.success,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+              ],
+              total: _total,
+              page: _page,
+              pageSize: _pageSize,
+              onPageChanged: (p) {
+                _page = p;
+                reload();
+              },
+              onPageSizeChanged: (size) {
+                if (size == _pageSize) return;
+                _pageSize = size;
+                _page = 1;
+                reload();
+              },
+              onTapRow: (i) => TransactionDetailDialog.show(context, _rows[i].id),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+enum _TypeFilter {
+  all('همه', null),
+  receipt('رسید', {TransactionType.receipt}),
+  payment('برد', {TransactionType.payment}),
+  buy('خرید', {TransactionType.buy}),
+  sell('فروش', {TransactionType.sell}),
+  expense('مصرف', {TransactionType.expense}),
+  other('سایر', {
+    TransactionType.openingCash,
+    TransactionType.openingCustomer,
+    TransactionType.cashAdjustment,
+    TransactionType.customerAdjustment,
+    TransactionType.reversal,
+  });
+
+  const _TypeFilter(this.label, this.types);
+
+  final String label;
+  final Set<TransactionType>? types;
+}

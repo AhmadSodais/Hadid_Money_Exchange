@@ -90,12 +90,12 @@ BEGIN
         BLOCK "040904e4"
         BEGIN
             VALUE "CompanyName", "Hadid" "\0"
-            VALUE "FileDescription", "Hadid" "\0"
+            VALUE "FileDescription", "Hadid Money Exchange" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
             VALUE "InternalName", "Hadid" "\0"
             VALUE "LegalCopyright", "Copyright (C) 2026 Hadid. All rights reserved." "\0"
-            VALUE "OriginalFilename", "pos_general.exe" "\0"
-            VALUE "ProductName", "Hadid" "\0"
+            VALUE "OriginalFilename", "hadid_exchange.exe" "\0"
+            VALUE "ProductName", "Hadid Money Exchange" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END

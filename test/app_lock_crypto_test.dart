@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:pos_general/core/security/app_lock_crypto.dart';
+import 'package:hadid_exchange/core/security/app_lock_crypto.dart';
 
 void main() {
   test('PBKDF2-HMAC-SHA256 matches RFC 6070', () {

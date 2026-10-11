@@ -14,7 +14,7 @@ import '../../core/utils/gf_breakpoints.dart';
 import '../../core/widgets/gf_responsive.dart';
 import '../../core/widgets/gf_search_field.dart';
 import '../providers/app_settings_provider.dart';
-import '../providers/auth_provider.dart';
+import '../session/app_session.dart';
 import 'glassflow_sidebar.dart';
 import 'motion_widgets.dart';
 
@@ -56,11 +56,15 @@ class _AppShellState extends State<AppShell> {
     if (focusContext != null && ModalRoute.of(focusContext) is PopupRoute) {
       return false;
     }
+    // Inside a form, Tab moves between fields (keyboard data entry).
+    if (focusContext?.findAncestorWidgetOfExactType<EditableText>() != null) {
+      return false;
+    }
     return true;
   }
 
   void _cyclePage(bool forward) {
-    final items = visibleSidebarItems(context.read<AuthProvider>());
+    final items = visibleSidebarItems(context.read<AppSession>());
     if (items.isEmpty) return;
     final location = GoRouterState.of(context).uri.path;
     final current = items.indexWhere(
@@ -116,8 +120,8 @@ class _AppShellState extends State<AppShell> {
         },
         const SingleActivator(LogicalKeyboardKey.keyN, control: true): () {
           final loc = GoRouterState.of(context).uri.path;
-          if (loc == AppRoutes.sales) return;
-          context.go(AppRoutes.sales);
+          if (loc == AppRoutes.exchange) return;
+          context.go(AppRoutes.exchange);
         },
       },
       child: Shortcuts(

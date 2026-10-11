@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:pos_general/core/constants/app_font.dart';
+import 'package:hadid_exchange/core/constants/app_font.dart';
 
 import 'app_colors.dart';
 

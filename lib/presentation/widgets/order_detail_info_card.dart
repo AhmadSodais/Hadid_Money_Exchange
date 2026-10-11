@@ -1,49 +1,190 @@
-import 'dart:io';
-
-import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import '../../core/theme/app_typography.dart';
-import '../../core/utils/formatters.dart';
-import '../../core/widgets/gf_text_field.dart';
-import '../../data/models/order_model.dart';
-import '../../data/models/purchase_model.dart';
 import 'order_detail_dialog_style.dart';
 
-/// Shared row model so order + purchase view/edit tables use one widget.
-class InvoiceProductLine {
-  const InvoiceProductLine({
-    required this.productName,
-    required this.quantity,
-    required this.unitPrice,
-    required this.lineTotal,
-    this.productImagePath,
+/// Read-only detail dialog frame: icon header with close, scrolling body,
+/// fixed footer, in the [OrderDetailDialogStyle] look.
+class OrderDetailDialogFrame extends StatelessWidget {
+  const OrderDetailDialogFrame({
+    super.key,
+    required this.icon,
+    required this.title,
+    required this.body,
+    this.subtitle,
+    this.headerTrailing,
+    this.summary,
+    this.footerStart = const [],
+    this.closeLabel = 'بستن',
+    this.maxWidth = OrderDetailDialogStyle.maxWidth,
+    this.minHeight = OrderDetailDialogStyle.minHeight,
   });
 
-  final String productName;
-  final double quantity;
-  final double unitPrice;
-  final double lineTotal;
-  final String? productImagePath;
+  final IconData icon;
+  final String title;
+  final String? subtitle;
+  final Widget? headerTrailing;
+  final Widget body;
+  final Widget? summary;
+  final List<Widget> footerStart;
+  final String closeLabel;
+  final double maxWidth;
+  final double minHeight;
 
-  factory InvoiceProductLine.fromOrderItem(OrderItemModel item) {
-    return InvoiceProductLine(
-      productName: item.productName,
-      quantity: item.quantity,
-      unitPrice: item.unitPrice,
-      lineTotal: item.lineTotal,
-      productImagePath: item.productImagePath,
+  static Future<T?> show<T>(
+    BuildContext context, {
+    required WidgetBuilder builder,
+  }) {
+    return showDialog<T>(
+      context: context,
+      barrierColor: const Color(0x661E293B),
+      builder: builder,
     );
   }
 
-  factory InvoiceProductLine.fromPurchaseItem(PurchaseItemModel item) {
-    return InvoiceProductLine(
-      productName: item.productName,
-      quantity: item.quantity,
-      unitPrice: item.unitPrice,
-      lineTotal: item.lineTotal,
-      productImagePath: item.productImagePath,
+  @override
+  Widget build(BuildContext context) {
+    void close() => Navigator.of(context).pop();
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      elevation: 0,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+      child: Container(
+        constraints: BoxConstraints(
+          maxWidth: maxWidth,
+          minHeight: minHeight,
+          maxHeight: OrderDetailDialogStyle.maxHeight,
+        ),
+        decoration: OrderDetailDialogStyle.container,
+        padding: OrderDetailDialogStyle.framePadding,
+        child: OrderDetailDialogStyle.scrollLayout(
+          header: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  width: OrderDetailDialogStyle.fieldHeight,
+                  height: OrderDetailDialogStyle.fieldHeight,
+                  decoration: BoxDecoration(
+                    color: OrderDetailDialogStyle.iconBg,
+                    borderRadius: OrderDetailDialogStyle.controlBorderRadius,
+                  ),
+                  child: Icon(icon, color: OrderDetailDialogStyle.accent, size: 22),
+                ),
+                OrderDetailDialogStyle.rowGap,
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        style: AppTypography.sectionTitle.copyWith(
+                          color: OrderDetailDialogStyle.navy,
+                          fontSize: 17,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      if (subtitle != null) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          subtitle!,
+                          style: AppTypography.caption.copyWith(
+                            color: OrderDetailDialogStyle.muted,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                if (headerTrailing != null) ...[
+                  OrderDetailDialogStyle.inlineGap,
+                  headerTrailing!,
+                ],
+                IconButton(
+                  onPressed: close,
+                  icon: Icon(
+                    Icons.close_rounded,
+                    color: OrderDetailDialogStyle.muted,
+                    size: 20,
+                  ),
+                  visualDensity: VisualDensity.compact,
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+            Divider(height: 1, color: OrderDetailDialogStyle.border),
+            OrderDetailDialogStyle.sectionSpace,
+          ],
+          body: body,
+          footer: [
+            if (summary != null) ...[
+              OrderDetailDialogStyle.sectionSpace,
+              summary!,
+            ],
+            const SizedBox(height: 16),
+            Divider(height: 1, color: OrderDetailDialogStyle.border),
+            const SizedBox(height: 14),
+            Row(
+              children: [
+                ...footerStart,
+                const Spacer(),
+                OutlinedButton(
+                  onPressed: close,
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: OrderDetailDialogStyle.navy,
+                    side: OrderDetailDialogStyle.borderSide,
+                    backgroundColor: OrderDetailDialogStyle.surface,
+                    minimumSize: const Size(0, OrderDetailDialogStyle.fieldHeight),
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: OrderDetailDialogStyle.controlBorderRadius,
+                    ),
+                  ),
+                  child: Text(
+                    closeLabel,
+                    style: AppTypography.bodyMedium.copyWith(
+                      color: OrderDetailDialogStyle.navy,
+                      fontSize: 13,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Footer text action in the detail dialog (e.g. edit / reverse).
+class OrderDetailFooterAction extends StatelessWidget {
+  const OrderDetailFooterAction({
+    super.key,
+    required this.label,
+    required this.icon,
+    required this.onPressed,
+    this.danger = false,
+  });
+
+  final String label;
+  final IconData icon;
+  final VoidCallback? onPressed;
+  final bool danger;
+
+  @override
+  Widget build(BuildContext context) {
+    return TextButton.icon(
+      onPressed: onPressed,
+      icon: Icon(icon, size: 16),
+      label: Text(label),
+      style: TextButton.styleFrom(
+        foregroundColor:
+            danger ? OrderDetailDialogStyle.danger : OrderDetailDialogStyle.accent,
+      ),
     );
   }
 }
@@ -82,35 +223,62 @@ class OrderDetailInfoCard extends StatelessWidget {
   }
 }
 
-class OrderDetailPaymentBadge extends StatelessWidget {
-  const OrderDetailPaymentBadge({super.key, required this.status});
+/// Icon + single line value inside an [OrderDetailInfoCard].
+class OrderDetailInfoValue extends StatelessWidget {
+  const OrderDetailInfoValue({
+    super.key,
+    required this.icon,
+    required this.value,
+    this.ltr = false,
+  });
 
-  final String status;
+  final IconData icon;
+  final String value;
+  final bool ltr;
 
   @override
   Widget build(BuildContext context) {
-    final (label, color, bg) = switch (status) {
-      'paid' => (
-          'orders.paid'.tr(),
-          OrderDetailDialogStyle.success,
-          OrderDetailDialogStyle.successBg,
+    return Row(
+      children: [
+        Icon(icon, size: 18, color: OrderDetailDialogStyle.navy),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            textDirection: ltr ? TextDirection.ltr : null,
+            textAlign: TextAlign.start,
+            style: AppTypography.bodyMedium.copyWith(
+              color: OrderDetailDialogStyle.navy,
+              fontSize: 13,
+            ),
+          ),
         ),
-      'partial' => (
-          'orders.partial'.tr(),
-          const Color(0xFFD97706),
-          const Color(0xFFFEF3C7),
-        ),
-      _ => (
-          'orders.unpaid'.tr(),
-          const Color(0xFFDC2626),
-          const Color(0xFFFEE2E2),
-        ),
-    };
+      ],
+    );
+  }
+}
 
+/// Dot + label status pill in the detail dialog style.
+class OrderDetailStatusBadge extends StatelessWidget {
+  const OrderDetailStatusBadge({
+    super.key,
+    required this.label,
+    required this.color,
+    this.background,
+  });
+
+  final String label;
+  final Color color;
+  final Color? background;
+
+  @override
+  Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
-        color: bg,
+        color: background ?? color.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(8),
       ),
       child: Row(
@@ -144,6 +312,8 @@ class OrderDetailSummaryRow extends StatelessWidget {
     this.highlight = false,
     this.mutedValue = false,
     this.dense = false,
+    this.valueColor,
+    this.ltrValue = false,
   });
 
   final String label;
@@ -151,6 +321,8 @@ class OrderDetailSummaryRow extends StatelessWidget {
   final bool highlight;
   final bool mutedValue;
   final bool dense;
+  final Color? valueColor;
+  final bool ltrValue;
 
   @override
   Widget build(BuildContext context) {
@@ -171,16 +343,22 @@ class OrderDetailSummaryRow extends StatelessWidget {
               ),
             ),
           ),
-          Text(
-            value,
-            style: AppTypography.bodyMedium.copyWith(
-              color: highlight
-                  ? OrderDetailDialogStyle.accent
-                  : (mutedValue
-                      ? OrderDetailDialogStyle.muted
-                      : OrderDetailDialogStyle.navy),
-              fontWeight: highlight ? FontWeight.w700 : FontWeight.w500,
-              fontSize: highlight ? (dense ? 13 : 14) : (dense ? 12 : 13),
+          const SizedBox(width: 12),
+          Flexible(
+            child: Text(
+              value,
+              textDirection: ltrValue ? TextDirection.ltr : null,
+              textAlign: TextAlign.end,
+              style: AppTypography.bodyMedium.copyWith(
+                color: valueColor ??
+                    (highlight
+                        ? OrderDetailDialogStyle.accent
+                        : (mutedValue
+                            ? OrderDetailDialogStyle.muted
+                            : OrderDetailDialogStyle.navy)),
+                fontWeight: highlight ? FontWeight.w700 : FontWeight.w500,
+                fontSize: highlight ? (dense ? 13 : 14) : (dense ? 12 : 13),
+              ),
             ),
           ),
         ],
@@ -195,30 +373,11 @@ class OrderDetailSummaryRow extends StatelessWidget {
   }
 }
 
-/// Compact editable payment summary (discount / paid + total / remaining).
-class OrderDetailEditablePaymentSummary extends StatelessWidget {
-  const OrderDetailEditablePaymentSummary({
-    super.key,
-    required this.currency,
-    required this.discountCtrl,
-    required this.paidCtrl,
-    required this.total,
-    required this.remaining,
-    required this.onChanged,
-    this.paidLabel,
-  });
+/// Bordered card stacking [OrderDetailSummaryRow]s with dividers.
+class OrderDetailSummaryCard extends StatelessWidget {
+  const OrderDetailSummaryCard({super.key, required this.rows});
 
-  final String currency;
-  final TextEditingController discountCtrl;
-  final TextEditingController paidCtrl;
-  final double total;
-  final double remaining;
-  final VoidCallback onChanged;
-  final String? paidLabel;
-
-  static const double _fieldH = 36;
-
-  bool get _hasRemaining => remaining > 0.0001;
+  final List<Widget> rows;
 
   @override
   Widget build(BuildContext context) {
@@ -229,166 +388,47 @@ class OrderDetailEditablePaymentSummary extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: _labeledField(
-                    label: 'sales.discount'.tr(),
-                    controller: discountCtrl,
-                  ),
-                ),
-                Container(
-                  width: 1,
-                  height: 52,
-                  margin: const EdgeInsets.symmetric(horizontal: 12),
-                  color: OrderDetailDialogStyle.border,
-                ),
-                Expanded(
-                  child: _labeledField(
-                    label: paidLabel ?? 'sales.amountReceived'.tr(),
-                    controller: paidCtrl,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-            color: OrderDetailDialogStyle.totalHighlight,
-            child: Row(
-              children: [
-                Expanded(
-                  child: _stat(
-                    label: 'sales.total'.tr(),
-                    value: Formatters.money(total, currency: currency),
-                    emphasize: true,
-                  ),
-                ),
-                if (_hasRemaining) ...[
-                  Container(
-                    width: 1,
-                    height: 28,
-                    margin: const EdgeInsets.symmetric(horizontal: 12),
-                    color: OrderDetailDialogStyle.border,
-                  ),
-                  Expanded(
-                    child: _stat(
-                      label: 'sales.remaining'.tr(),
-                      value: Formatters.money(remaining, currency: currency),
-                      danger: true,
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _labeledField({
-    required String label,
-    required TextEditingController controller,
-  }) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text(
-          label,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: AppTypography.caption.copyWith(
-            color: OrderDetailDialogStyle.muted,
-            fontWeight: FontWeight.w600,
-            fontSize: 11,
-          ),
-        ),
-        const SizedBox(height: 6),
-        GfTextField(
-          controller: controller,
-          numberMode: true,
-          textAlign: TextAlign.end,
-          height: _fieldH,
-          inputFormatters: [
-            FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]')),
+          for (var i = 0; i < rows.length; i++) ...[
+            if (i > 0) Divider(height: 1, thickness: 1, color: OrderDetailDialogStyle.border),
+            rows[i],
           ],
-          onChanged: (_) => onChanged(),
-        ),
-      ],
-    );
-  }
-
-  Widget _stat({
-    required String label,
-    required String value,
-    bool emphasize = false,
-    bool danger = false,
-  }) {
-    final valueColor = danger
-        ? OrderDetailDialogStyle.danger
-        : (emphasize
-              ? OrderDetailDialogStyle.accent
-              : OrderDetailDialogStyle.navy);
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text(
-          label,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: AppTypography.caption.copyWith(
-            color: OrderDetailDialogStyle.muted,
-            fontWeight: FontWeight.w600,
-            fontSize: 11,
-          ),
-        ),
-        const SizedBox(height: 2),
-        Text(
-          value,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: AppTypography.bodyMedium.copyWith(
-            color: valueColor,
-            fontWeight: FontWeight.w700,
-            fontSize: emphasize ? 15 : 13,
-          ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }
 
-/// Compact read-only payment summary for invoice view dialogs.
-class OrderDetailReadonlyPaymentSummary extends StatelessWidget {
-  const OrderDetailReadonlyPaymentSummary({
+/// Label/value pairs side by side, with an optional highlighted total strip,
+/// matching the original read-only payment summary.
+class OrderDetailStatPanel extends StatelessWidget {
+  const OrderDetailStatPanel({
     super.key,
-    required this.currency,
-    required this.total,
-    required this.amountPaid,
-    required this.remaining,
-    this.discount = 0,
-    this.paidLabel,
+    required this.stats,
+    this.highlights = const [],
   });
 
-  final String currency;
-  final double total;
-  final double amountPaid;
-  final double remaining;
-  final double discount;
-  final String? paidLabel;
-
-  bool get _hasDiscount => discount > 0.0001;
-  bool get _hasRemaining => remaining > 0.0001;
+  final List<OrderDetailStat> stats;
+  final List<OrderDetailStat> highlights;
 
   @override
   Widget build(BuildContext context) {
+    Widget strip(List<OrderDetailStat> items, {required bool emphasize}) {
+      return Row(
+        children: [
+          for (var i = 0; i < items.length; i++) ...[
+            if (i > 0)
+              Container(
+                width: 1,
+                height: 28,
+                margin: const EdgeInsets.symmetric(horizontal: 12),
+                color: OrderDetailDialogStyle.border,
+              ),
+            Expanded(child: _stat(items[i], emphasize: emphasize)),
+          ],
+        ],
+      );
+    }
+
     return Container(
       decoration: OrderDetailDialogStyle.card,
       clipBehavior: Clip.antiAlias,
@@ -396,87 +436,31 @@ class OrderDetailReadonlyPaymentSummary extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-            child: Row(
-              children: [
-                if (_hasDiscount) ...[
-                  Expanded(
-                    child: _stat(
-                      label: 'sales.discount'.tr(),
-                      value:
-                          '- ${Formatters.money(discount, currency: currency)}',
-                    ),
-                  ),
-                  Container(
-                    width: 1,
-                    height: 28,
-                    margin: const EdgeInsets.symmetric(horizontal: 12),
-                    color: OrderDetailDialogStyle.border,
-                  ),
-                ],
-                Expanded(
-                  child: _stat(
-                    label: paidLabel ?? 'sales.amountReceived'.tr(),
-                    value: Formatters.money(amountPaid, currency: currency),
-                  ),
-                ),
-              ],
+          if (stats.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+              child: strip(stats, emphasize: false),
             ),
-          ),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-            color: OrderDetailDialogStyle.totalHighlight,
-            child: Row(
-              children: [
-                Expanded(
-                  child: _stat(
-                    label: 'sales.total'.tr(),
-                    value: Formatters.money(total, currency: currency),
-                    emphasize: true,
-                  ),
-                ),
-                if (_hasRemaining) ...[
-                  Container(
-                    width: 1,
-                    height: 28,
-                    margin: const EdgeInsets.symmetric(horizontal: 12),
-                    color: OrderDetailDialogStyle.border,
-                  ),
-                  Expanded(
-                    child: _stat(
-                      label: 'sales.remaining'.tr(),
-                      value: Formatters.money(remaining, currency: currency),
-                      danger: true,
-                    ),
-                  ),
-                ],
-              ],
+          if (highlights.isNotEmpty)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              color: OrderDetailDialogStyle.totalHighlight,
+              child: strip(highlights, emphasize: true),
             ),
-          ),
         ],
       ),
     );
   }
 
-  Widget _stat({
-    required String label,
-    required String value,
-    bool emphasize = false,
-    bool danger = false,
-  }) {
-    final valueColor = danger
-        ? OrderDetailDialogStyle.danger
-        : (emphasize
-              ? OrderDetailDialogStyle.accent
-              : OrderDetailDialogStyle.navy);
-
+  Widget _stat(OrderDetailStat stat, {required bool emphasize}) {
+    final valueColor = stat.color ??
+        (emphasize ? OrderDetailDialogStyle.accent : OrderDetailDialogStyle.navy);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
         Text(
-          label,
+          stat.label,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           style: AppTypography.caption.copyWith(
@@ -487,8 +471,8 @@ class OrderDetailReadonlyPaymentSummary extends StatelessWidget {
         ),
         const SizedBox(height: 2),
         Text(
-          value,
-          maxLines: 1,
+          stat.value,
+          maxLines: 2,
           overflow: TextOverflow.ellipsis,
           style: AppTypography.bodyMedium.copyWith(
             color: valueColor,
@@ -501,44 +485,57 @@ class OrderDetailReadonlyPaymentSummary extends StatelessWidget {
   }
 }
 
-class OrderDetailProductTable extends StatelessWidget {
-  const OrderDetailProductTable({
-    super.key,
-    required this.lines,
-    required this.currency,
+class OrderDetailStat {
+  const OrderDetailStat(this.label, this.value, {this.color});
+
+  final String label;
+  final String value;
+  final Color? color;
+}
+
+/// Column definition for [OrderDetailLinesTable].
+class OrderDetailColumn {
+  const OrderDetailColumn(
+    this.label, {
+    this.flex = 1,
+    this.width,
+    this.numeric = false,
   });
 
-  final List<InvoiceProductLine> lines;
-  final String currency;
+  final String label;
+  final int flex;
+  final double? width;
+  final bool numeric;
+}
 
-  /// Convenience for order invoices.
-  factory OrderDetailProductTable.fromOrderItems({
-    Key? key,
-    required List<OrderItemModel> items,
-    required String currency,
-  }) {
-    return OrderDetailProductTable(
-      key: key,
-      lines: items.map(InvoiceProductLine.fromOrderItem).toList(),
-      currency: currency,
-    );
-  }
+/// Lines table in the detail dialog style (header strip + divided rows).
+class OrderDetailLinesTable extends StatelessWidget {
+  const OrderDetailLinesTable({
+    super.key,
+    required this.columns,
+    required this.rows,
+    this.emptyText = 'موردی نیست',
+    this.showIndex = true,
+  });
 
-  /// Convenience for purchase invoices.
-  factory OrderDetailProductTable.fromPurchaseItems({
-    Key? key,
-    required List<PurchaseItemModel> items,
-    required String currency,
-  }) {
-    return OrderDetailProductTable(
-      key: key,
-      lines: items.map(InvoiceProductLine.fromPurchaseItem).toList(),
-      currency: currency,
-    );
-  }
+  final List<OrderDetailColumn> columns;
+  final List<List<Widget>> rows;
+  final String emptyText;
+  final bool showIndex;
 
   @override
   Widget build(BuildContext context) {
+    Widget cell(OrderDetailColumn c, Widget child) {
+      final aligned = Align(
+        alignment: c.numeric
+            ? AlignmentDirectional.centerEnd
+            : AlignmentDirectional.centerStart,
+        child: child,
+      );
+      if (c.width != null) return SizedBox(width: c.width, child: aligned);
+      return Expanded(flex: c.flex, child: aligned);
+    }
+
     return Container(
       decoration: OrderDetailDialogStyle.card,
       clipBehavior: Clip.antiAlias,
@@ -549,45 +546,56 @@ class OrderDetailProductTable extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             child: Row(
               children: [
-                _h('#', width: 28),
-                Expanded(flex: 4, child: _h('common.product'.tr())),
-                _h('common.qty'.tr(), width: 44, align: TextAlign.center),
-                Expanded(
-                  flex: 2,
-                  child: _h(
-                    'inboundOutbound.unitPrice'.tr(),
-                    align: TextAlign.end,
-                  ),
-                ),
-                Expanded(
-                  flex: 2,
-                  child: _h('orders.total'.tr(), align: TextAlign.end),
-                ),
+                if (showIndex) SizedBox(width: 28, child: _h('#')),
+                for (final c in columns) cell(c, _h(c.label)),
               ],
             ),
           ),
-          if (lines.isEmpty)
+          if (rows.isEmpty)
             Padding(
               padding: const EdgeInsets.all(16),
               child: Text(
-                'common.noData'.tr(),
+                emptyText,
                 style: AppTypography.caption.copyWith(
                   color: OrderDetailDialogStyle.muted,
                 ),
               ),
             )
           else
-            for (var i = 0; i < lines.length; i++) ...[
+            for (var i = 0; i < rows.length; i++) ...[
               if (i > 0)
                 Divider(
                   height: 1,
                   thickness: 1,
                   color: OrderDetailDialogStyle.border,
                 ),
-              _ProductRow(
-                index: i + 1,
-                line: lines[i],
-                currency: currency,
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                child: Row(
+                  children: [
+                    if (showIndex)
+                      SizedBox(
+                        width: 28,
+                        child: Text(
+                          '${i + 1}',
+                          style: AppTypography.caption.copyWith(
+                            color: OrderDetailDialogStyle.muted,
+                          ),
+                        ),
+                      ),
+                    for (var c = 0; c < columns.length; c++)
+                      cell(
+                        columns[c],
+                        DefaultTextStyle.merge(
+                          style: AppTypography.body.copyWith(
+                            color: OrderDetailDialogStyle.navy,
+                            fontSize: 13,
+                          ),
+                          child: c < rows[i].length ? rows[i][c] : const SizedBox.shrink(),
+                        ),
+                      ),
+                  ],
+                ),
               ),
             ],
         ],
@@ -595,135 +603,14 @@ class OrderDetailProductTable extends StatelessWidget {
     );
   }
 
-  Widget _h(String text, {double? width, TextAlign align = TextAlign.start}) {
-    final child = Text(
+  Widget _h(String text) {
+    return Text(
       text,
-      textAlign: align,
       style: AppTypography.caption.copyWith(
         color: OrderDetailDialogStyle.muted,
         fontWeight: FontWeight.w600,
         fontSize: 12,
       ),
-    );
-    if (width != null) return SizedBox(width: width, child: child);
-    return child;
-  }
-}
-
-class _ProductRow extends StatelessWidget {
-  const _ProductRow({
-    required this.index,
-    required this.line,
-    required this.currency,
-  });
-
-  final int index;
-  final InvoiceProductLine line;
-  final String currency;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      child: Row(
-        children: [
-          SizedBox(
-            width: 28,
-            child: Text(
-              '$index',
-              style: AppTypography.caption.copyWith(
-                color: OrderDetailDialogStyle.muted,
-              ),
-            ),
-          ),
-          Expanded(
-            flex: 4,
-            child: Row(
-              children: [
-                _Thumb(path: line.productImagePath),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    line.productName,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: AppTypography.bodyMedium.copyWith(
-                      color: OrderDetailDialogStyle.navy,
-                      fontSize: 13,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          SizedBox(
-            width: 44,
-            child: Text(
-              Formatters.number(line.quantity),
-              textAlign: TextAlign.center,
-              style: AppTypography.body.copyWith(
-                color: OrderDetailDialogStyle.muted,
-                fontSize: 13,
-              ),
-            ),
-          ),
-          Expanded(
-            flex: 2,
-            child: Text(
-              Formatters.money(line.unitPrice, currency: currency),
-              textAlign: TextAlign.end,
-              style: AppTypography.body.copyWith(
-                color: OrderDetailDialogStyle.muted,
-                fontSize: 12,
-              ),
-            ),
-          ),
-          Expanded(
-            flex: 2,
-            child: Text(
-              Formatters.money(line.lineTotal, currency: currency),
-              textAlign: TextAlign.end,
-              style: AppTypography.bodyMedium.copyWith(
-                color: OrderDetailDialogStyle.navy,
-                fontSize: 13,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _Thumb extends StatelessWidget {
-  const _Thumb({this.path});
-
-  final String? path;
-
-  @override
-  Widget build(BuildContext context) {
-    final p = (path ?? '').trim();
-    Widget child = ColoredBox(
-      color: OrderDetailDialogStyle.tableHeaderBg,
-      child: Icon(
-        Icons.image_outlined,
-        size: 16,
-        color: OrderDetailDialogStyle.muted,
-      ),
-    );
-    if (p.isNotEmpty) {
-      final file = File(p);
-      if (file.existsSync()) {
-        child = Image.file(
-          file,
-          fit: BoxFit.cover,
-          errorBuilder: (_, __, ___) => child,
-        );
-      }
-    }
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(8),
-      child: SizedBox(width: 32, height: 32, child: child),
     );
   }
 }

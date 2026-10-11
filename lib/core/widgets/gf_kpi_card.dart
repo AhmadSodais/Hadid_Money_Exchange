@@ -5,19 +5,23 @@ import '../theme/app_colors.dart';
 import '../theme/app_radius.dart';
 import '../theme/app_spacing.dart';
 import '../theme/app_typography.dart';
-import '../utils/formatters.dart';
 
 enum GfKpiTone { normal, warning, error }
 
 /// One currency line inside a [GfKpiCard] multi-currency value.
+///
+/// [amountText] is already formatted by the caller so money never passes
+/// through floating point here.
 class GfKpiCurrencyLine {
   const GfKpiCurrencyLine({
-    required this.amount,
-    required this.currencyCode,
+    required this.amountText,
+    required this.currencyLabel,
+    this.color,
   });
 
-  final double amount;
-  final String currencyCode;
+  final String amountText;
+  final String currencyLabel;
+  final Color? color;
 }
 
 /// KPI metric card with optional trend, sparkline, and icon.
@@ -179,10 +183,7 @@ class _CurrencyValueBlock extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final visible = lines.where((l) => l.amount > 0).toList();
-    final rows = visible.isEmpty
-        ? const [GfKpiCurrencyLine(amount: 0, currencyCode: 'AFN')]
-        : visible;
+    final rows = lines;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -203,10 +204,13 @@ class _CurrencyValueBlock extends StatelessWidget {
             children: [
               Expanded(
                 child: Text(
-                  Formatters.number(rows[i].amount, decimals: 0),
-                  style: AppTypography.kpiValue.copyWith(fontSize: 18),
+                  rows[i].amountText,
+                  style: AppTypography.kpiValue
+                      .copyWith(fontSize: 18, color: rows[i].color),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
+                  textDirection: TextDirection.ltr,
+                  textAlign: TextAlign.end,
                 ),
               ),
               const SizedBox(width: 8),
@@ -220,7 +224,7 @@ class _CurrencyValueBlock extends StatelessWidget {
                   ),
                 ),
                 child: Text(
-                  Formatters.currencyName(rows[i].currencyCode),
+                  rows[i].currencyLabel,
                   style: AppTypography.caption.copyWith(
                     fontSize: 11,
                     fontWeight: FontWeight.w600,
@@ -255,7 +259,7 @@ class _TrendChip extends StatelessWidget {
         ),
         const SizedBox(width: 3),
         Text(
-          Formatters.percent(percent),
+          '${percent >= 0 ? '+' : ''}${percent.toStringAsFixed(1)}%',
           style: AppTypography.caption.copyWith(
             fontSize: 10,
             color: color,

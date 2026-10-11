@@ -1,5 +1,5 @@
-name: pos_general
-description: "Hadid — offline-first glass shop management for Windows."
+name: hadid_exchange
+description: "Hadid Money Exchange — offline currency exchange accounting for Windows."
 publish_to: 'none'
 version: 1.0.0+1
 
@@ -24,25 +24,17 @@ dependencies:
   shared_preferences: ^2.5.3
   file_picker: ^10.2.0
   uuid: ^4.6.0
-  equatable: ^2.0.7
-  csv: ^6.0.0
-  collection: ^1.19.1
   excel: ^4.0.6
   shamsi_date: ^1.1.1
   persian_datetime_picker: ^3.2.0
   crypto: ^3.0.7
-  pdf: ^3.12.0
-  share_plus: ^12.0.2
-  flutter_launcher_icons: ^0.14.4
-  bidi: ^2.0.13
-  http: ^1.6.0
-  connectivity_plus: ^7.3.1
   hijri: ^3.0.1
-  # local_auth: ^3.0.2
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0
+  flutter_launcher_icons: ^0.14.4
 
 flutter:
   uses-material-design: true
@@ -51,7 +43,6 @@ flutter:
     - assets/images/
     - assets/lang/
     - assets/fonts/
-    - assets/fonts/pdf/
 
   fonts:
     - family: Vazirmatn

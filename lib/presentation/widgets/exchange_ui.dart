@@ -1,0 +1,756 @@
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
+
+import '../../application/catalog_service.dart';
+import '../../application/read_models.dart';
+import '../../core/theme/app_colors.dart';
+import '../../core/theme/app_radius.dart';
+import '../../core/theme/app_spacing.dart';
+import '../../core/theme/app_typography.dart';
+import '../../core/utils/formatters.dart';
+import '../../core/widgets/widgets.dart';
+import '../../domain/errors/domain_errors.dart';
+import '../../domain/money/currency.dart';
+import '../../domain/shared/business_date.dart';
+import '../format/money_format.dart';
+import '../session/app_session.dart';
+import 'dialog_shared.dart';
+
+export 'dialog_shared.dart';
+
+// ---------------------------------------------------------------- actions
+
+/// Runs a service call and reports the outcome. Success is reported only
+/// after the service returned (i.e. after the database commit); every error
+/// is shown — nothing is swallowed.
+Future<T?> runAction<T>(
+  BuildContext context,
+  Future<T> Function() action, {
+  String? success,
+}) async {
+  try {
+    final result = await action();
+    if (success != null && context.mounted) GfToast.success(context, success);
+    return result;
+  } on DomainError catch (e) {
+    if (context.mounted) GfToast.error(context, e.message);
+  } catch (e) {
+    if (context.mounted) GfToast.error(context, 'خطای غیرمنتظره: $e');
+  }
+  return null;
+}
+
+/// Reloads page data whenever a committed change is broadcast.
+mixin RevisionReload<T extends StatefulWidget> on State<T> {
+  int _seenRevision = -1;
+
+  AppSession get session => Provider.of<AppSession>(context, listen: false);
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final revision = Provider.of<AppSession>(context).revision;
+    if (revision != _seenRevision) {
+      _seenRevision = revision;
+      reload();
+    }
+  }
+
+  Future<void> reload();
+}
+
+// ------------------------------------------------------------------ table
+
+class LedgerColumn {
+  const LedgerColumn(this.label, {this.flex = 1, this.numeric = false, this.width});
+
+  final String label;
+  final int flex;
+  final bool numeric;
+  final double? width;
+
+  GfTableColumn get tableColumn => GfTableColumn(
+        label: label,
+        flex: flex,
+        width: width,
+        alignment: numeric ? AlignmentDirectional.centerEnd : AlignmentDirectional.centerStart,
+      );
+
+  Widget cell(Widget child) {
+    final aligned = Padding(
+      padding: const EdgeInsetsDirectional.only(end: 8),
+      child: Align(
+        alignment: numeric ? AlignmentDirectional.centerEnd : AlignmentDirectional.centerStart,
+        child: DefaultTextStyle.merge(
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          child: child,
+        ),
+      ),
+    );
+    return width != null ? SizedBox(width: width, child: aligned) : Expanded(flex: flex, child: aligned);
+  }
+}
+
+/// Row-actions popup used in the last table column.
+class LedgerRowMenu extends StatelessWidget {
+  const LedgerRowMenu({super.key, required this.items, required this.onSelected});
+
+  final List<PopupMenuEntry<String>> items;
+  final ValueChanged<String> onSelected;
+
+  static const double width = 48;
+
+  @override
+  Widget build(BuildContext context) {
+    return PopupMenuButton<String>(
+      icon: const Icon(Icons.more_vert, size: 18),
+      color: AppColors.modal,
+      position: PopupMenuPosition.under,
+      onSelected: onSelected,
+      itemBuilder: (_) => items,
+    );
+  }
+}
+
+/// Ledger data table built on [GfDataTable]: card chrome, row numbers,
+/// header strip and pagination bar.
+///
+/// Without [onPageChanged] the rows are paginated client-side. With
+/// [shrinkWrap] the table sizes to its rows (no pagination) for small
+/// embedded lists.
+class LedgerTable extends StatelessWidget {
+  const LedgerTable({
+    super.key,
+    required this.columns,
+    required this.rows,
+    this.onTapRow,
+    this.emptyText = 'موردی یافت نشد.',
+    this.emptyHint,
+    this.shrinkWrap = false,
+    this.title,
+    this.subtitle,
+    this.actions = const [],
+    this.tabs,
+    this.itemLabel = 'ردیف',
+    this.minWidth,
+    this.isLoading = false,
+    this.page = 1,
+    this.pageSize = 20,
+    this.total,
+    this.onPageChanged,
+    this.onPageSizeChanged,
+    this.showRowNumbers = true,
+  });
+
+  final List<LedgerColumn> columns;
+  final List<List<Widget>> rows;
+  final ValueChanged<int>? onTapRow;
+  final String emptyText;
+  final String? emptyHint;
+  final bool shrinkWrap;
+  final String? title;
+  final String? subtitle;
+  final List<Widget> actions;
+  final Widget? tabs;
+  final String itemLabel;
+  final double? minWidth;
+  final bool isLoading;
+  final int page;
+  final int pageSize;
+  final int? total;
+  final ValueChanged<int>? onPageChanged;
+  final ValueChanged<int>? onPageSizeChanged;
+  final bool showRowNumbers;
+
+  Widget _row(BuildContext context, int i) {
+    final cells = rows[i];
+    return GfTableRow(
+      onTap: onTapRow == null ? null : () => onTapRow!(i),
+      children: [
+        for (var c = 0; c < columns.length; c++)
+          columns[c].cell(c < cells.length ? cells[c] : const SizedBox.shrink()),
+      ],
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final empty = GfEmptyState(title: emptyText, subtitle: emptyHint, compact: true);
+    if (shrinkWrap) {
+      return _CompactLedgerTable(
+        columns: columns,
+        rowCount: rows.length,
+        rowBuilder: _row,
+        empty: empty,
+        title: title,
+        subtitle: subtitle,
+        actions: actions,
+        minWidth: minWidth,
+        showRowNumbers: showRowNumbers,
+      );
+    }
+    final server = onPageChanged != null;
+    return GfDataTable(
+      title: title,
+      subtitle: subtitle,
+      actions: actions,
+      tabs: tabs,
+      isLoading: isLoading,
+      minWidth: minWidth == null ? null : gfTableMinWidth(context, preferred: minWidth!),
+      columns: [for (final c in columns) c.tableColumn],
+      rowCount: rows.length,
+      total: total ?? rows.length,
+      page: page,
+      pageSize: pageSize,
+      clientSide: !server,
+      autoPageSize: true,
+      onPageChanged: onPageChanged,
+      onPageSizeChanged: onPageSizeChanged,
+      itemLabel: itemLabel,
+      showRowNumbers: showRowNumbers,
+      empty: empty,
+      rowBuilder: _row,
+    );
+  }
+}
+
+/// Non-paginated table with the same header/row styling as [GfDataTable].
+class _CompactLedgerTable extends StatelessWidget {
+  const _CompactLedgerTable({
+    required this.columns,
+    required this.rowCount,
+    required this.rowBuilder,
+    required this.empty,
+    required this.showRowNumbers,
+    this.title,
+    this.subtitle,
+    this.actions = const [],
+    this.minWidth,
+  });
+
+  final List<LedgerColumn> columns;
+  final int rowCount;
+  final Widget Function(BuildContext, int) rowBuilder;
+  final Widget empty;
+  final bool showRowNumbers;
+  final String? title;
+  final String? subtitle;
+  final List<Widget> actions;
+  final double? minWidth;
+
+  static const double _numberWidth = 52;
+
+  Widget _numbered(BuildContext context, int i) {
+    final row = rowBuilder(context, i) as GfTableRow;
+    if (!showRowNumbers) return row;
+    return GfTableRow(
+      onTap: row.onTap,
+      children: [
+        SizedBox(
+          width: _numberWidth,
+          child: Center(
+            child: Text(
+              '${i + 1}',
+              style: AppTypography.caption.copyWith(
+                color: AppColors.textSecondary,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ),
+        ...row.children,
+      ],
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final headerStyle = AppTypography.caption.copyWith(
+      color: AppColors.isLight ? AppColors.lightPrimary900 : AppColors.textSecondary,
+      fontWeight: FontWeight.w500,
+      fontSize: 13,
+    );
+    Widget headerCell(LedgerColumn c) {
+      final text = Text(
+        c.label,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        textAlign: c.numeric ? TextAlign.end : TextAlign.start,
+        style: headerStyle,
+      );
+      final padded = Padding(
+        padding: const EdgeInsetsDirectional.only(end: 8),
+        child: SizedBox(width: double.infinity, child: text),
+      );
+      return c.width != null ? SizedBox(width: c.width, child: padded) : Expanded(flex: c.flex, child: padded);
+    }
+
+    final table = Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Container(
+          height: 48,
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          color: AppColors.tableHeader,
+          child: Row(
+            children: [
+              if (showRowNumbers)
+                SizedBox(
+                  width: _numberWidth,
+                  child: Text('#', textAlign: TextAlign.center, style: headerStyle),
+                ),
+              for (final c in columns) headerCell(c),
+            ],
+          ),
+        ),
+        Divider(height: 1, color: AppColors.divider),
+        if (rowCount == 0)
+          Padding(padding: const EdgeInsets.all(24), child: empty)
+        else
+          for (var i = 0; i < rowCount; i++) _numbered(context, i),
+      ],
+    );
+
+    final hasChrome = title != null || actions.isNotEmpty;
+    return GfCard(
+      padding: EdgeInsets.zero,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (hasChrome)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (title != null)
+                          Text(title!, style: AppTypography.sectionTitle, maxLines: 1, overflow: TextOverflow.ellipsis),
+                        if (subtitle != null) ...[
+                          const SizedBox(height: 2),
+                          Text(subtitle!, style: AppTypography.caption.copyWith(color: AppColors.textSecondary)),
+                        ],
+                      ],
+                    ),
+                  ),
+                  if (actions.isNotEmpty) GfActionBar(alignment: WrapAlignment.end, children: actions),
+                ],
+              ),
+            ),
+          ClipRRect(
+            borderRadius: const BorderRadius.vertical(bottom: Radius.circular(8)),
+            child: minWidth == null
+                ? table
+                : LayoutBuilder(
+                    builder: (context, c) {
+                      if (c.maxWidth >= minWidth!) return table;
+                      return SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: SizedBox(width: minWidth, child: table),
+                      );
+                    },
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Monospace-like amount cell; negative values are shown in the error color
+/// when [signColor] is set.
+class AmountText extends StatelessWidget {
+  const AmountText(this.minor, this.currency,
+      {super.key, this.signColor = false, this.bold = false, this.showName = false});
+
+  final int minor;
+  final Currency? currency;
+  final bool signColor;
+  final bool bold;
+  final bool showName;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = !signColor || minor == 0
+        ? AppColors.textPrimary
+        : (minor > 0 ? AppColors.success : AppColors.error);
+    return Text(
+      showName ? MoneyFormat.withName(minor, currency) : MoneyFormat.amount(minor, currency),
+      textDirection: TextDirection.ltr,
+      style: (bold ? AppTypography.bodySemiBold : AppTypography.body).copyWith(
+        color: color,
+        fontFeatures: const [FontFeature.tabularFigures()],
+      ),
+    );
+  }
+}
+
+enum BannerTone { info, warning, error, success }
+
+class InfoBanner extends StatelessWidget {
+  const InfoBanner(this.text, {super.key, this.tone = BannerTone.info});
+
+  final String text;
+  final BannerTone tone;
+
+  @override
+  Widget build(BuildContext context) {
+    return DialogInfoBanner(
+      message: text,
+      tone: switch (tone) {
+        BannerTone.info => DialogBannerTone.info,
+        BannerTone.warning => DialogBannerTone.warning,
+        BannerTone.error => DialogBannerTone.error,
+        BannerTone.success => DialogBannerTone.success,
+      },
+    );
+  }
+}
+
+// ----------------------------------------------------------------- fields
+
+class AmountField extends StatelessWidget {
+  const AmountField({
+    super.key,
+    required this.controller,
+    required this.label,
+    this.onChanged,
+    this.enabled = true,
+    this.allowNegative = false,
+    this.errorText,
+    this.hint,
+  });
+
+  final TextEditingController controller;
+  final String label;
+  final ValueChanged<String>? onChanged;
+  final bool enabled;
+  final bool allowNegative;
+  final String? errorText;
+  final String? hint;
+
+  @override
+  Widget build(BuildContext context) {
+    return GfTextField(
+      label: label,
+      controller: controller,
+      enabled: enabled,
+      hint: hint ?? '0',
+      errorText: errorText,
+      keyboardType: TextInputType.numberWithOptions(decimal: true, signed: allowNegative),
+      inputFormatters: [
+        if (!allowNegative) FilteringTextInputFormatter.deny(RegExp('-')),
+        const ThousandsSeparatorInputFormatter(),
+      ],
+      textAlign: TextAlign.end,
+      onChanged: onChanged,
+    );
+  }
+}
+
+class CurrencyPicker extends StatelessWidget {
+  const CurrencyPicker({
+    super.key,
+    required this.value,
+    required this.onChanged,
+    this.label = 'ارز',
+    this.currencies,
+    this.enabled = true,
+  });
+
+  final Currency? value;
+  final ValueChanged<Currency> onChanged;
+  final String label;
+  final List<Currency>? currencies;
+  final bool enabled;
+
+  @override
+  Widget build(BuildContext context) {
+    final items = currencies ?? context.watch<AppSession>().activeCurrencies;
+    return GfDropdown<Currency>(
+      label: label,
+      items: items,
+      value: value,
+      enabled: enabled,
+      labelBuilder: (c) => '${c.nameFa} (${c.code})',
+      onChanged: (c) {
+        if (c != null) onChanged(c);
+      },
+    );
+  }
+}
+
+class DrawerPicker extends StatelessWidget {
+  const DrawerPicker({super.key, required this.value, required this.onChanged});
+
+  final int? value;
+  final ValueChanged<int> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final drawers = context.watch<AppSession>().activeDrawers;
+    CashDrawer? selected;
+    for (final d in drawers) {
+      if (d.id == value) selected = d;
+    }
+    return GfDropdown<CashDrawer>(
+      label: 'صندوق',
+      items: drawers,
+      value: selected,
+      labelBuilder: (d) => d.nameFa,
+      onChanged: (d) {
+        if (d != null) onChanged(d.id);
+      },
+    );
+  }
+}
+
+class BusinessDateField extends StatelessWidget {
+  const BusinessDateField({
+    super.key,
+    required this.value,
+    required this.onChanged,
+    this.label = 'تاریخ',
+  });
+
+  final BusinessDate value;
+  final ValueChanged<BusinessDate> onChanged;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return GfShamsiDateField(
+      label: label,
+      value: value.toDateTime(),
+      clearable: false,
+      onChanged: (d) {
+        if (d != null) onChanged(BusinessDate.fromDateTime(d));
+      },
+    );
+  }
+}
+
+/// Shows the selected customer and opens a search dialog to change it.
+class CustomerPickerField extends StatelessWidget {
+  const CustomerPickerField({
+    super.key,
+    required this.selected,
+    required this.onSelected,
+    this.allowWalkIn = false,
+    this.label = 'مشتری',
+  });
+
+  final CustomerRecord? selected;
+  final ValueChanged<CustomerRecord> onSelected;
+  final bool allowWalkIn;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(label, style: AppTypography.label),
+        const SizedBox(height: 6),
+        InkWell(
+          borderRadius: AppRadius.input,
+          onTap: () async {
+            final picked = await CustomerSearchDialog.show(context, allowWalkIn: allowWalkIn);
+            if (picked != null) onSelected(picked);
+          },
+          child: Container(
+            height: AppSpacing.controlHeight,
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            decoration: BoxDecoration(
+              color: AppColors.input,
+              borderRadius: AppRadius.input,
+              border: Border.all(color: AppColors.inputBorder),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.person_search_outlined, size: 18, color: AppColors.textSecondary),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    selected == null ? 'انتخاب مشتری…' : '${selected!.name}  ·  ${selected!.code}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppTypography.body.copyWith(
+                      color: selected == null ? AppColors.textMuted : AppColors.textPrimary,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class CustomerSearchDialog extends StatefulWidget {
+  const CustomerSearchDialog({super.key, required this.allowWalkIn});
+
+  final bool allowWalkIn;
+
+  static Future<CustomerRecord?> show(BuildContext context, {bool allowWalkIn = false}) {
+    return showDialog<CustomerRecord>(
+      context: context,
+      builder: (_) => ChangeNotifierProvider.value(
+        value: context.read<AppSession>(),
+        child: CustomerSearchDialog(allowWalkIn: allowWalkIn),
+      ),
+    );
+  }
+
+  @override
+  State<CustomerSearchDialog> createState() => _CustomerSearchDialogState();
+}
+
+class _CustomerSearchDialogState extends State<CustomerSearchDialog> {
+  final _query = TextEditingController();
+  List<CustomerRecord> _results = const [];
+
+  @override
+  void initState() {
+    super.initState();
+    _search('');
+  }
+
+  @override
+  void dispose() {
+    _query.dispose();
+    super.dispose();
+  }
+
+  Future<void> _search(String q) async {
+    final session = context.read<AppSession>();
+    final list = await session.services.customers
+        .search(q, includeWalkIn: widget.allowWalkIn, limit: 100);
+    if (mounted) setState(() => _results = list);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GfDialogShell(
+      icon: Icons.person_search_outlined,
+      iconColor: AppColors.primary,
+      title: 'جستجوی مشتری',
+      subtitle: 'برای انتخاب، روی مشتری کلیک کنید.',
+      cancelLabel: 'بستن',
+      onCancel: () => Navigator.of(context).pop(),
+      maxWidth: 480,
+      maxHeight: 600,
+      fixedHeight: true,
+      scrollBody: false,
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          GfTextField(
+            controller: _query,
+            autofocus: true,
+            hint: 'نام، شماره تماس، کد یا شماره مشتری',
+            prefixIcon: Icons.search,
+            onChanged: _search,
+          ),
+          const SizedBox(height: 14),
+          Expanded(
+            child: _results.isEmpty
+                ? const Center(
+                    child: GfEmptyState(
+                      title: 'مشتری یافت نشد.',
+                      subtitle: 'عبارت جستجو را تغییر دهید.',
+                      compact: true,
+                    ),
+                  )
+                : ListView.separated(
+                    itemCount: _results.length,
+                    separatorBuilder: (_, _) => Divider(height: 1, color: AppColors.divider),
+                    itemBuilder: (_, i) {
+                      final c = _results[i];
+                      return ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        leading: Icon(
+                          c.isWalkIn ? Icons.directions_walk : Icons.person_outline,
+                          color: AppColors.primary,
+                          size: 20,
+                        ),
+                        title: Text('${i + 1}. ${c.name}', style: AppTypography.bodyMedium),
+                        subtitle: Text(
+                          [c.code, if (c.phone != null) c.phone!].join('  ·  '),
+                          style: AppTypography.caption,
+                        ),
+                        onTap: () => Navigator.of(context).pop(c),
+                      );
+                    },
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Asks for a mandatory reason (reversal, adjustment, reopen…).
+Future<String?> askReason(
+  BuildContext context, {
+  required String title,
+  required String message,
+  String confirmLabel = 'تأیید',
+  bool danger = true,
+}) {
+  final controller = TextEditingController();
+  return showDialog<String>(
+    context: context,
+    builder: (ctx) => StatefulBuilder(
+      builder: (ctx, setState) {
+        void submit() {
+          final text = controller.text.trim();
+          if (text.isEmpty) return;
+          Navigator.of(ctx).pop(text);
+        }
+
+        return GfDialogShell(
+          icon: danger ? Icons.warning_amber_rounded : Icons.edit_note_outlined,
+          iconColor: danger ? AppColors.error : AppColors.primary,
+          title: title,
+          subtitle: 'ثبت دلیل برای سوابق ممیزی الزامی است.',
+          cancelLabel: 'انصراف',
+          onCancel: () => Navigator.of(ctx).pop(),
+          primaryLabel: confirmLabel,
+          primaryIcon: danger ? Icons.undo_rounded : Icons.check_rounded,
+          dangerPrimary: danger,
+          onPrimary: submit,
+          maxWidth: 420,
+          body: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              DialogInfoBanner(
+                message: message,
+                tone: danger ? DialogBannerTone.warning : DialogBannerTone.info,
+              ),
+              const SizedBox(height: 14),
+              GfTextField(
+                controller: controller,
+                label: 'دلیل',
+                required: true,
+                autofocus: true,
+                minLines: 2,
+                maxLines: 4,
+              ),
+            ],
+          ),
+        );
+      },
+    ),
+  );
+}

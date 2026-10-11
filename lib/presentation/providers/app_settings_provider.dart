@@ -5,6 +5,8 @@ import '../../core/constants/app_constants.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/utils/app_calendar.dart';
 
+/// UI preferences only (theme, sidebar, calendar). Financial settings are
+/// stored in the database and changed through `CatalogService`.
 class AppSettingsProvider extends ChangeNotifier {
   AppSettingsProvider(this._prefs) {
     AppCalendar.apply(calendarType);
@@ -18,27 +20,12 @@ class AppSettingsProvider extends ChangeNotifier {
   bool get reducedMotion =>
       _prefs.getBool(AppConstants.prefReducedMotion) ?? false;
 
-  /// Online sync / Sync Center. Default on.
-  bool get onlineEnabled =>
-      _prefs.getBool(AppConstants.prefOnlineEnabled) ?? true;
+  /// Calendar: solar (default for Afghanistan) | gregorian | lunar.
+  AppCalendarType get calendarType {
+    final raw = _prefs.getString(AppConstants.prefCalendarType);
+    return raw == null ? AppCalendarType.solar : AppCalendarType.parse(raw);
+  }
 
-  /// Block selling beyond available stock. Default on.
-  bool get limitToStock =>
-      _prefs.getBool(AppConstants.prefLimitToStock) ?? true;
-
-  /// Business type: general | supplement | clothing.
-  String get storeType =>
-      _prefs.getString(AppConstants.prefStoreType) ?? 'general';
-
-  /// Calendar: gregorian (default) | solar | lunar.
-  AppCalendarType get calendarType =>
-      AppCalendarType.parse(_prefs.getString(AppConstants.prefCalendarType));
-
-  String get baseCurrency =>
-      _prefs.getString(AppConstants.prefBaseCurrency) ??
-      AppConstants.defaultCurrencyCode;
-
-  /// `light` or `dark` (default light to match GlassFlow Light Professional).
   String get themeModeKey =>
       _prefs.getString(AppConstants.prefThemeMode) ?? 'light';
 
@@ -47,7 +34,6 @@ class AppSettingsProvider extends ChangeNotifier {
 
   bool get isLightMode => themeMode == ThemeMode.light;
 
-  /// Dark palette remembered across light/dark toggles.
   AppThemeVariant get darkVariant =>
       _prefs.getString(AppConstants.prefDarkPalette) ==
           AppThemeVariant.hadid.name
@@ -56,6 +42,13 @@ class AppSettingsProvider extends ChangeNotifier {
 
   AppThemeVariant get themeVariant =>
       isLightMode ? AppThemeVariant.light : darkVariant;
+
+  int? get selectedDrawerId => _prefs.getInt(AppConstants.prefDrawerId);
+
+  Future<void> setSelectedDrawerId(int id) async {
+    await _prefs.setInt(AppConstants.prefDrawerId, id);
+    notifyListeners();
+  }
 
   Future<void> setSidebarCollapsed(bool value) async {
     await _prefs.setBool(AppConstants.prefSidebarCollapsed, value);
@@ -69,29 +62,9 @@ class AppSettingsProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> setOnlineEnabled(bool value) async {
-    await _prefs.setBool(AppConstants.prefOnlineEnabled, value);
-    notifyListeners();
-  }
-
-  Future<void> setLimitToStock(bool value) async {
-    await _prefs.setBool(AppConstants.prefLimitToStock, value);
-    notifyListeners();
-  }
-
-  Future<void> setStoreType(String value) async {
-    await _prefs.setString(AppConstants.prefStoreType, value);
-    notifyListeners();
-  }
-
   Future<void> setCalendarType(AppCalendarType type) async {
     await _prefs.setString(AppConstants.prefCalendarType, type.storageKey);
     AppCalendar.apply(type);
-    notifyListeners();
-  }
-
-  Future<void> setBaseCurrency(String code) async {
-    await _prefs.setString(AppConstants.prefBaseCurrency, code);
     notifyListeners();
   }
 

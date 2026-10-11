@@ -2,7 +2,6 @@ export '../keyboard/gf_keyboard.dart';
 export '../utils/gf_breakpoints.dart';
 export 'gf_button.dart';
 export 'gf_card.dart';
-export 'gf_charts.dart';
 export 'gf_confirm_dialog.dart';
 export 'gf_count_box.dart';
 export 'gf_data_table.dart';

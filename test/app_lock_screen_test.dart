@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:pos_general/core/security/app_biometric.dart';
-import 'package:pos_general/presentation/providers/app_lock_provider.dart';
-import 'package:pos_general/presentation/widgets/app_lock_screen.dart';
+import 'package:hadid_exchange/core/security/app_biometric.dart';
+import 'package:hadid_exchange/presentation/providers/app_lock_provider.dart';
+import 'package:hadid_exchange/presentation/widgets/app_lock_screen.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 

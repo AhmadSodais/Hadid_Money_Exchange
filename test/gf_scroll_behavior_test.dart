@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:pos_general/core/widgets/gf_scroll_behavior.dart';
+import 'package:hadid_exchange/core/widgets/gf_scroll_behavior.dart';
 
 Widget _app(int itemCount, {TextDirection dir = TextDirection.ltr}) {
   return MaterialApp(

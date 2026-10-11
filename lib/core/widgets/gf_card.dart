@@ -93,7 +93,9 @@ class GfCard extends StatelessWidget {
         border: showBorder ? Border.all(color: AppColors.border) : null,
         boxShadow: useSoftShadow ? AppShadows.card : null,
       ),
-      child: content,
+      // Ink from list tiles and switches inside the card must paint above
+      // the card's background, not on a Material behind it.
+      child: Material(type: MaterialType.transparency, child: content),
     );
 
     if (onTap == null) return decorated;

@@ -69,7 +69,7 @@ class GfCountBox extends StatelessWidget {
               ),
               const SizedBox(width: AppSpacing.sm),
               Text(
-                Formatters.number(count.toDouble(), decimals: 0),
+                ThousandsSeparatorInputFormatter.groupDigits('$count'),
                 style: AppTypography.kpiValue.copyWith(fontSize: 20),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,

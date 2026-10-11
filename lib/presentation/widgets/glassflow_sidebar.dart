@@ -4,14 +4,12 @@ import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
-import 'package:pos_general/core/constants/app_assets.dart';
 import 'package:provider/provider.dart';
 
+import '../../core/constants/app_assets.dart';
 import '../../core/constants/app_constants.dart';
 import '../../core/constants/app_routes.dart';
 import '../../core/keyboard/gf_keyboard.dart';
-import '../../core/security/app_permissions.dart';
-import '../../core/security/auth_labels.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_durations.dart';
 import '../../core/theme/app_radius.dart';
@@ -19,9 +17,11 @@ import '../../core/theme/app_shadows.dart';
 import '../../core/theme/app_spacing.dart';
 import '../../core/theme/app_typography.dart';
 import '../../core/widgets/gf_scroll_behavior.dart';
+import '../../core/widgets/gf_toast.dart';
+import '../../domain/security/permissions.dart';
+import '../providers/app_lock_provider.dart';
 import '../providers/app_settings_provider.dart';
-import '../providers/auth_provider.dart';
-import '../providers/alerts_count_provider.dart';
+import '../session/app_session.dart';
 
 class SidebarItem {
   const SidebarItem({
@@ -33,6 +33,7 @@ class SidebarItem {
     this.permission,
   });
 
+  /// Persian label (the app is Persian-only).
   final String label;
   final String route;
   final String icon;
@@ -43,103 +44,77 @@ class SidebarItem {
 
 const kSidebarItems = <SidebarItem>[
   SidebarItem(
-    label: 'sidebar.overview',
-    route: AppRoutes.overview,
+    label: 'داشبورد',
+    route: AppRoutes.dashboard,
     icon: AppAssets.home,
     filledIcon: AppAssets.home_filled,
-    permission: AppPermissions.overview,
   ),
   SidebarItem(
-    label: 'sidebar.sales',
-    route: AppRoutes.sales,
-    icon: AppAssets.order,
-    filledIcon: AppAssets.ordersFilled,
-    permission: AppPermissions.sales,
+    label: 'خرید و فروش ارز',
+    route: AppRoutes.exchange,
+    icon: AppAssets.currencies,
+    filledIcon: AppAssets.currenciesFilled,
+    permission: Permissions.transactionsPost,
   ),
   SidebarItem(
-    label: 'sidebar.products',
-    route: AppRoutes.products,
-    icon: AppAssets.product,
-    filledIcon: AppAssets.productFilled,
-    permission: AppPermissions.products,
-  ),
-  SidebarItem(
-    label: 'sidebar.alerts',
-    route: AppRoutes.alerts,
-    icon: AppAssets.notifications,
-    filledIcon: AppAssets.notificationsFilled,
-    permission: AppPermissions.alerts,
-  ),
-  SidebarItem(
-    label: 'sidebar.orders',
-    route: AppRoutes.orders,
-    icon: AppAssets.invoice,
-    filledIcon: AppAssets.invoiceFilled,
-    permission: AppPermissions.orders,
-  ),
-  SidebarItem(
-    label: 'sidebar.purchases',
-    route: AppRoutes.purchases,
+    label: 'رسید و برد',
+    route: AppRoutes.cash,
     icon: AppAssets.sales,
     filledIcon: AppAssets.salseFilled,
-    permission: AppPermissions.purchases,
+    permission: Permissions.transactionsPost,
   ),
   SidebarItem(
-    label: 'sidebar.tradingCompanies',
-    route: AppRoutes.tradingCompanies,
-    icon: AppAssets.suppliers,
-    filledIcon: AppAssets.suppliersFilled,
-    permission: AppPermissions.tradingCompanies,
-  ),
-  SidebarItem(
-    label: 'sidebar.customers',
+    label: 'مشتریان',
     route: AppRoutes.customers,
     icon: AppAssets.users,
     filledIcon: AppAssets.usersFilled,
-    permission: AppPermissions.customers,
   ),
   SidebarItem(
-    label: 'sidebar.expenses',
-    route: AppRoutes.expenses,
-    icon: AppAssets.expenses,
-    filledIcon: AppAssets.expensesFilled,
-    permission: AppPermissions.expenses,
+    label: 'روزنامچه معاملات',
+    route: AppRoutes.journal,
+    icon: AppAssets.invoice,
+    filledIcon: AppAssets.invoiceFilled,
+    permission: Permissions.reportsView,
   ),
   SidebarItem(
-    label: 'sidebar.warehouse',
-    route: AppRoutes.warehouses,
+    label: 'بیلانس روزانه',
+    route: AppRoutes.reconciliation,
     icon: AppAssets.inventory,
     filledIcon: AppAssets.inventoryFilled,
-    permission: AppPermissions.warehouses,
+    permission: Permissions.reconciliationPerform,
   ),
   SidebarItem(
-    label: 'sidebar.employees',
-    route: AppRoutes.employees,
-    icon: AppAssets.users,
-    filledIcon: AppAssets.usersFilled,
-    permission: AppPermissions.employees,
+    label: 'گزارش‌ها',
+    route: AppRoutes.reports,
+    icon: AppAssets.reports,
+    filledIcon: AppAssets.reportsFilled,
+    permission: Permissions.reportsView,
   ),
   SidebarItem(
-    label: 'sidebar.configuration',
+    label: 'نرخ ارز',
+    route: AppRoutes.rates,
+    icon: AppAssets.analytics,
+    filledIcon: AppAssets.analyticsFilled,
+  ),
+  SidebarItem(
+    label: 'تنظیمات',
     route: AppRoutes.settings,
     icon: AppAssets.setting,
     filledIcon: AppAssets.settingFilled,
-    permission: AppPermissions.settings,
   ),
 ];
 
 /// Sidebar entries the current user can see, in display order.
-List<SidebarItem> visibleSidebarItems(AuthProvider auth) {
+List<SidebarItem> visibleSidebarItems(AppSession session) {
   return kSidebarItems.where((item) {
     final perm = item.permission;
-    if (perm == null) return true;
-    return auth.hasPermission(perm);
+    return perm == null || session.can(perm);
   }).toList();
 }
 
 bool isSidebarRouteSelected(String location, String route) {
-  if (route == AppRoutes.overview) {
-    return location == AppRoutes.overview || location.isEmpty;
+  if (route == AppRoutes.dashboard) {
+    return location == AppRoutes.dashboard || location.isEmpty;
   }
   return location == route || location.startsWith('$route/');
 }
@@ -175,21 +150,7 @@ class GlassFlowSidebar extends StatelessWidget {
     final duration = settings.anim(AppDurations.sidebar);
     final location = GoRouterState.of(context).uri.path;
     final height = MediaQuery.of(context).size.height;
-    final auth = context.watch<AuthProvider>();
-    final alertCount = context.watch<AlertsCountProvider>().count;
-    final visibleItems = visibleSidebarItems(auth).map((item) {
-      if (item.route == AppRoutes.alerts && alertCount > 0) {
-        return SidebarItem(
-          label: item.label,
-          route: item.route,
-          icon: item.icon,
-          filledIcon: item.filledIcon,
-          permission: item.permission,
-          badge: alertCount,
-        );
-      }
-      return item;
-    }).toList();
+    final visibleItems = visibleSidebarItems(context.watch<AppSession>());
     return AnimatedContainer(
       duration: duration,
       curve: Curves.easeOutCubic,
@@ -403,7 +364,7 @@ class _BrandHeader extends StatelessWidget {
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      'sidebar.brandTagline'.tr(),
+                      'صرافی و حسابداری ارز',
                       style:
                           AppTypography.localize(
                             AppTypography.caption,
@@ -669,7 +630,7 @@ class _NavTileState extends State<_NavTile> with TickerProviderStateMixin {
       child: Semantics(
         button: true,
         selected: selected,
-        label: widget.item.label.tr(),
+        label: widget.item.label,
         child: GestureDetector(
           behavior: HitTestBehavior.opaque,
           onTap: _handleTap,
@@ -803,7 +764,7 @@ class _NavTileState extends State<_NavTile> with TickerProviderStateMixin {
                                   child: Align(
                                     alignment: labelAlign,
                                     child: Text(
-                                      widget.item.label.tr(),
+                                      widget.item.label,
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
                                       textAlign: textAlign,
@@ -875,25 +836,26 @@ class _UserSessionTile extends StatelessWidget {
   final bool showLabels;
   final Duration duration;
 
-  /// Needs more width than nav labels (avatar + name + logout).
+  /// Needs more width than nav labels (avatar + name + lock).
   static const _expandedMinWidth = 200.0;
 
-  Future<void> _logout(BuildContext context) async {
-    final auth = context.read<AuthProvider>();
-    await auth.logout();
-    if (context.mounted) context.go(AppRoutes.login);
+  /// Manual lock. Without a configured app lock there is nothing to lock
+  /// with, so the user is pointed to Settings instead.
+  void _logout(BuildContext context) {
+    final lock = context.read<AppLockProvider>();
+    if (!lock.isEnabled) {
+      GfToast.warning(context, 'قفل برنامه فعال نیست؛ آن را از تنظیمات فعال کنید.');
+      context.go(AppRoutes.settings);
+      return;
+    }
+    lock.lock();
   }
 
   @override
   Widget build(BuildContext context) {
-    final auth = context.watch<AuthProvider>();
-    final user = auth.currentUser;
-    if (user == null) return const SizedBox.shrink();
-
-    final displayName = AuthLabels.userDisplayName(user.displayName);
-    final roleLine = user.roleName != null
-        ? AuthLabels.roleName(user.roleName)
-        : user.username;
+    final actor = context.watch<AppSession>().actor;
+    final displayName = actor.displayName;
+    const roleLine = 'قفل دستی برنامه';
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -945,7 +907,7 @@ class _UserSessionTile extends StatelessWidget {
                       ),
                     ),
                     IconButton(
-                      tooltip: 'auth.logout'.tr(),
+                      tooltip: 'قفل برنامه',
                       visualDensity: VisualDensity.compact,
                       padding: EdgeInsets.zero,
                       constraints: const BoxConstraints(
@@ -953,7 +915,7 @@ class _UserSessionTile extends StatelessWidget {
                         minHeight: 36,
                       ),
                       icon: Icon(
-                        Icons.logout,
+                        Icons.lock_outline,
                         size: 18,
                         color: AppColors.textMuted,
                       ),
@@ -1001,12 +963,12 @@ class _UserSessionTile extends StatelessWidget {
                         child: Row(
                           children: [
                             Icon(
-                              Icons.logout,
+                              Icons.lock_outline,
                               size: 18,
                               color: AppColors.textSecondary,
                             ),
                             const SizedBox(width: 10),
-                            Text('auth.logout'.tr()),
+                            const Text('قفل برنامه'),
                           ],
                         ),
                       ),

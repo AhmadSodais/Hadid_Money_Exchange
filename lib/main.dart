@@ -1,37 +1,33 @@
-import 'package:easy_localization/easy_localization.dart';
+import 'package:easy_localization/easy_localization.dart' hide TextDirection;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 import 'package:persian_datetime_picker/persian_datetime_picker.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+import 'application/app_services.dart';
+import 'application/security_service.dart';
 import 'core/constants/app_constants.dart';
-import 'core/database/app_database.dart';
 import 'core/routing/app_router.dart';
-import 'core/sync/firebase_auth_session.dart';
-import 'core/sync/firebase_config.dart';
+import 'core/snackbar/snackbar_viewmodel.dart';
 import 'core/theme/app_colors.dart';
 import 'core/theme/app_theme.dart';
 import 'core/theme/app_typography.dart';
 import 'core/theme/day_night_transition.dart';
-import 'presentation/providers/app_lock_provider.dart';
-import 'presentation/providers/app_settings_provider.dart';
-import 'presentation/providers/auth_provider.dart';
-import 'presentation/providers/alerts_count_provider.dart';
-import 'presentation/providers/device_authorization_provider.dart';
-import 'presentation/providers/trial_license_provider.dart';
-import 'presentation/viewmodels/sync_viewmodel.dart';
-import 'presentation/widgets/app_lock_gate.dart';
-import 'presentation/widgets/trial_lock_screen.dart';
-import 'presentation/widgets/unauthorized_device_screen.dart';
 import 'core/utils/app_calendar.dart';
 import 'core/utils/shamsi_dates.dart';
 import 'core/utils/window_title_bar.dart';
 import 'core/widgets/gf_scroll_behavior.dart';
 import 'core/widgets/gf_shamsi_date_field.dart';
-import 'core/snackbar/snackbar_viewmodel.dart';
 import 'core/widgets/gf_snackbar.dart';
 import 'core/widgets/gf_toast.dart';
+import 'presentation/providers/app_lock_provider.dart';
+import 'presentation/providers/app_settings_provider.dart';
+import 'presentation/session/app_session.dart';
+import 'presentation/widgets/app_lock_gate.dart';
 
 bool _isWindowsKeyboardGlitch(Object error) {
   final text = error.toString();
@@ -63,46 +59,46 @@ Future<void> main() async {
   _installWindowsKeyboardGuards();
   ShamsiDates.bindPicker(GfShamsiDatePicker.show);
 
-  // Quiet Easy Localization console spam ().
   EasyLocalization.logger.enableBuildModes = const [];
-
   await EasyLocalization.ensureInitialized();
 
-  String? dbError;
+  final prefs = await SharedPreferences.getInstance();
+  await prefs.remove('locale');
+  AppCalendar.applyFromKey(prefs.getString(AppConstants.prefCalendarType));
+
+  AppSession? session;
+  String? startupError;
+  String? startupWarning;
   try {
-    await AppDatabase.initialize();
-    await FirebaseConfig.load();
-    await FirebaseAuthSession.load();
+    final support = await getApplicationSupportDirectory();
+    final services = await AppServices.open(
+      databasePath: p.join(support.path, AppConstants.dataFolderName, 'hadid_exchange.db'),
+      backupDirectory: p.join(support.path, AppConstants.backupFolderName),
+    );
+    try {
+      await services.backups.autoBackupIfDue();
+    } catch (e, st) {
+      startupWarning = 'پشتیبان خودکار انجام نشد: $e';
+      debugPrint('Auto backup failed: $e\n$st');
+    }
+    session = await AppSession.start(services, SecurityService.ownerUserId);
   } catch (e, st) {
-    dbError = e.toString();
+    startupError = e.toString();
     debugPrint('Database init failed: $e\n$st');
   }
 
-  final prefs = await SharedPreferences.getInstance();
-  // Language UI is hidden — clear any previously saved locale so startLocale (fa) wins.
-  await prefs.remove('locale');
-  AppCalendar.applyFromKey(prefs.getString(AppConstants.prefCalendarType));
-  final auth = AuthProvider(prefs);
-  final router = createAppRouter(refreshListenable: auth);
-
   runApp(
     EasyLocalization(
-      // Only allow Persian (fa) in the app at all times.
       supportedLocales: const [Locale('fa')],
       startLocale: const Locale('fa'),
       fallbackLocale: const Locale('fa'),
       path: 'assets/lang',
-      // Language picker is hidden; keep app locked to Persian.
       saveLocale: false,
       child: MultiProvider(
         providers: [
           ChangeNotifierProvider(create: (_) => AppSettingsProvider(prefs)),
           ChangeNotifierProvider(create: (_) => AppLockProvider(prefs)),
-          ChangeNotifierProvider.value(value: auth),
-          ChangeNotifierProvider(create: (_) => AlertsCountProvider()),
-          ChangeNotifierProvider(create: (_) => DeviceAuthorizationProvider()),
-          ChangeNotifierProvider(create: (_) => TrialLicenseProvider()),
-          ChangeNotifierProvider(create: (_) => SyncViewModel(prefs: prefs)),
+          if (session != null) ChangeNotifierProvider.value(value: session),
           ChangeNotifierProvider(
             create: (_) {
               final vm = SnackbarViewModel();
@@ -111,17 +107,23 @@ Future<void> main() async {
             },
           ),
         ],
-        child: GlassFlowApp(router: router, databaseError: dbError),
+        child: HadidExchangeApp(
+          router: session == null ? null : createAppRouter(),
+          startupError: startupError,
+          startupWarning: startupWarning,
+        ),
       ),
     ),
   );
 }
 
-class GlassFlowApp extends StatelessWidget {
-  const GlassFlowApp({super.key, required this.router, this.databaseError});
+class HadidExchangeApp extends StatelessWidget {
+  const HadidExchangeApp({super.key, required this.router, this.startupError, this.startupWarning});
 
-  final GoRouter router;
-  final String? databaseError;
+  /// Null when the database could not be opened; only the error screen is shown.
+  final GoRouter? router;
+  final String? startupError;
+  final String? startupWarning;
 
   @override
   Widget build(BuildContext context) {
@@ -137,37 +139,39 @@ class GlassFlowApp extends StatelessWidget {
     );
   }
 
-  Widget _buildApp(
-    BuildContext context,
-    String langCode,
-    AppThemeVariant variant,
-  ) {
+  Widget _buildApp(BuildContext context, String langCode, AppThemeVariant variant) {
     AppColors.applyDarkPalette(variant.darkPalette);
+    final delegates = <LocalizationsDelegate<dynamic>>[
+      DariMaterialLocalizations.delegate,
+      DariCupertinoLocalizations.delegate,
+      ...context.localizationDelegates,
+    ];
+    final theme = AppLightTheme.lightForLanguage(langCode);
+    final darkTheme = AppDarkTheme.darkForLanguage(langCode);
+
+    if (router == null) {
+      return MaterialApp(
+        title: AppConstants.appName,
+        debugShowCheckedModeBanner: false,
+        theme: theme,
+        darkTheme: darkTheme,
+        themeMode: variant.themeMode,
+        localizationsDelegates: delegates,
+        supportedLocales: context.supportedLocales,
+        locale: context.locale,
+        home: _StartupErrorScreen(error: startupError ?? ''),
+      );
+    }
+
     return MaterialApp.router(
       title: AppConstants.appName,
       debugShowCheckedModeBanner: false,
       scrollBehavior: const GfScrollBehavior(),
-      theme: AppLightTheme.lightForLanguage(langCode),
-      darkTheme: AppDarkTheme.darkForLanguage(langCode),
+      theme: theme,
+      darkTheme: darkTheme,
       themeMode: variant.themeMode,
-      // Theme switches are animated by DayNightThemeTransition.
       themeAnimationDuration: Duration.zero,
-      localizationsDelegates: [
-        // Shamsi calendar Material localizations (must come first).
-        if (langCode == 'ps')
-          PashtoMaterialLocalizations.delegate
-        else if (langCode == 'fa')
-          DariMaterialLocalizations.delegate
-        else
-          DefaultPersianMaterialLocalizations.delegate,
-        if (langCode == 'ps')
-          PashtoCupertinoLocalizations.delegate
-        else if (langCode == 'fa')
-          DariCupertinoLocalizations.delegate
-        else
-          DefaultPersianCupertinoLocalizations.delegate,
-        ...context.localizationDelegates,
-      ],
+      localizationsDelegates: delegates,
       supportedLocales: context.supportedLocales,
       locale: context.locale,
       routerConfig: router,
@@ -185,9 +189,7 @@ class GlassFlowApp extends StatelessWidget {
 
         ThemeData withAppFont(ThemeData base) {
           final textTheme = base.textTheme.apply(fontFamily: family);
-          final primaryTextTheme = base.primaryTextTheme.apply(
-            fontFamily: family,
-          );
+          final primaryTextTheme = base.primaryTextTheme.apply(fontFamily: family);
           final body = AppTypography.body.copyWith(fontFamily: family);
           final label = AppTypography.label.copyWith(fontFamily: family);
           final caption = AppTypography.caption.copyWith(fontFamily: family);
@@ -195,13 +197,9 @@ class GlassFlowApp extends StatelessWidget {
             textTheme: textTheme,
             primaryTextTheme: primaryTextTheme,
             inputDecorationTheme: base.inputDecorationTheme.copyWith(
-              hintStyle: (base.inputDecorationTheme.hintStyle ?? body).copyWith(
-                fontFamily: family,
-              ),
-              labelStyle: (base.inputDecorationTheme.labelStyle ?? label)
-                  .copyWith(fontFamily: family),
-              errorStyle: (base.inputDecorationTheme.errorStyle ?? caption)
-                  .copyWith(fontFamily: family),
+              hintStyle: (base.inputDecorationTheme.hintStyle ?? body).copyWith(fontFamily: family),
+              labelStyle: (base.inputDecorationTheme.labelStyle ?? label).copyWith(fontFamily: family),
+              errorStyle: (base.inputDecorationTheme.errorStyle ?? caption).copyWith(fontFamily: family),
               helperStyle: caption.copyWith(fontFamily: family),
               floatingLabelStyle: label.copyWith(fontFamily: family),
               prefixStyle: body.copyWith(fontFamily: family),
@@ -211,73 +209,94 @@ class GlassFlowApp extends StatelessWidget {
           );
         }
 
-        final themed = Theme(
-          data: withAppFont(Theme.of(context)),
-          child: DefaultTextStyle.merge(
-            style: TextStyle(fontFamily: family, color: AppColors.textPrimary),
-            child: GfSnackbarHost(child: child ?? const SizedBox.shrink()),
-          ),
-        );
-
-        final Widget page;
-        if (databaseError != null) {
-          page = Material(
-            color: AppColors.background,
-            child: Center(
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: Text(
-                  '${'common.dbInitFailed'.tr()}\n\n$databaseError',
-                  textAlign: TextAlign.center,
-                  style: AppTypography.body.copyWith(
-                    fontFamily: family,
-                    color: AppColors.textSecondary,
-                  ),
+        return AppLockGate(
+          child: Theme(
+            data: withAppFont(Theme.of(context)),
+            child: DefaultTextStyle.merge(
+              style: TextStyle(fontFamily: family, color: AppColors.textPrimary),
+              child: GfSnackbarHost(
+                child: _StartupNotice(
+                  warning: startupWarning,
+                  child: child ?? const SizedBox.shrink(),
                 ),
               ),
             ),
-          );
-        } else {
-          final deviceAuth = context.watch<DeviceAuthorizationProvider>();
-          if (!deviceAuth.isReady) {
-            page = const AuthLoadingOverlay();
-          } else if (!deviceAuth.isAuthorized) {
-            page = Theme(
-              data: withAppFont(Theme.of(context)),
-              child: DefaultTextStyle.merge(
-                style: TextStyle(
-                  fontFamily: family,
-                  color: AppColors.textPrimary,
-                ),
-                child: GfSnackbarHost(
-                  child: Navigator(
-                    onGenerateRoute: (_) => MaterialPageRoute<void>(
-                      builder: (_) => const UnauthorizedDeviceScreen(),
-                    ),
-                  ),
-                ),
-              ),
-            );
-          } else {
-            final license = context.watch<TrialLicenseProvider>();
-            if (!license.isReady) {
-              page = const AuthLoadingOverlay();
-            } else if (license.isLocked) {
-              // Nested Navigator provides the Overlay that TextFields need.
-              page = Navigator(
-                onGenerateRoute: (_) => MaterialPageRoute<void>(
-                  builder: (_) => const TrialLockScreen(),
-                ),
-              );
-            } else {
-              final auth = context.watch<AuthProvider>();
-              page = auth.isReady ? themed : const AuthLoadingOverlay();
-            }
-          }
-        }
-
-        return AppLockGate(child: page);
+          ),
+        );
       },
+    );
+  }
+}
+
+class _StartupNotice extends StatefulWidget {
+  const _StartupNotice({required this.warning, required this.child});
+
+  final String? warning;
+  final Widget child;
+
+  @override
+  State<_StartupNotice> createState() => _StartupNoticeState();
+}
+
+class _StartupNoticeState extends State<_StartupNotice> {
+  @override
+  void initState() {
+    super.initState();
+    final warning = widget.warning;
+    if (warning != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) GfToast.warning(context, warning, duration: const Duration(seconds: 10));
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
+}
+
+class _StartupErrorScreen extends StatelessWidget {
+  const _StartupErrorScreen({required this.error});
+
+  final String error;
+
+  @override
+  Widget build(BuildContext context) {
+    return Directionality(
+      textDirection: TextDirection.rtl,
+      child: Material(
+        color: AppColors.background,
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 640),
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.storage_rounded, size: 48, color: AppColors.error),
+                  const SizedBox(height: 16),
+                  Text('پایگاه داده صرافی باز نشد.', style: AppTypography.sectionTitle, textAlign: TextAlign.center),
+                  const SizedBox(height: 12),
+                  Text(
+                    'هیچ داده‌ای تغییر داده نشده است. برنامه را ببندید و دوباره باز کنید. '
+                    'اگر مشکل ادامه داشت، پیش از هر اقدامی از پوشه داده‌ها کپی بگیرید و '
+                    'طبق راهنمای بازیابی، آخرین پشتیبان معتبر را بازیابی کنید.',
+                    textAlign: TextAlign.center,
+                    style: AppTypography.body.copyWith(color: AppColors.textSecondary),
+                  ),
+                  const SizedBox(height: 16),
+                  SelectableText(
+                    error,
+                    textDirection: TextDirection.ltr,
+                    textAlign: TextAlign.center,
+                    style: AppTypography.caption.copyWith(color: AppColors.textMuted),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
