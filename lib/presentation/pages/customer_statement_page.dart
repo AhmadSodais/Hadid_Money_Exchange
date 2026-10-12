@@ -94,15 +94,15 @@ class _CustomerStatementPageState extends State<CustomerStatementPage> with Revi
           : [customer.code, if (customer.phone != null) customer.phone!].join('  ·  '),
       leading: null,
       actions: [
-        GfFilterChip(
-          label: 'کل دوره',
-          icon: Icons.all_inclusive,
-          selected: _period == null,
-          onTap: () {
-            setState(() => _period = null);
-            reload();
-          },
-        ),
+        // GfFilterChip(
+        //   label: 'کل دوره',
+        //   icon: Icons.all_inclusive,
+        //   selected: _period == null,
+        //   onTap: () {
+        //     setState(() => _period = null);
+        //     reload();
+        //   },
+        // ),
         GfDateFilter(
           value: _period ?? DateFilterValue.thisMonth(),
           onChanged: (v) {
@@ -132,10 +132,13 @@ class _CustomerStatementPageState extends State<CustomerStatementPage> with Revi
                 ),
             ],
           ),
-        GfSecondaryButton(
-          label: 'بازگشت',
-          icon: Icons.arrow_forward,
-          onPressed: () => context.go(AppRoutes.customers),
+        Directionality(
+          textDirection: TextDirection.ltr,
+          child: GfSecondaryButton(
+            label: 'بازگشت',
+            icon: Icons.arrow_back,
+            onPressed: () => context.go(AppRoutes.customers),
+          ),
         ),
       ],
       body: _loading || customer == null

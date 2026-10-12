@@ -1,0 +1,2 @@
+For this application, you need to configure the localization so that all text is stored in a JSON file and the data is loaded from that file.
+2. The application must implement the MVVM architecture, separating the logic from the UI.
