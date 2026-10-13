@@ -15,6 +15,7 @@ import '../../core/widgets/widgets.dart';
 import '../../domain/errors/domain_errors.dart';
 import '../../domain/money/currency.dart';
 import '../../domain/shared/business_date.dart';
+import '../../domain/transactions/financial_command.dart';
 import '../format/money_format.dart';
 import '../session/app_session.dart';
 import 'dialog_shared.dart';
@@ -145,18 +146,21 @@ class LedgerColumn {
   final bool numeric;
   final double? width;
 
+  AlignmentDirectional get _alignment =>
+      numeric ? AlignmentDirectional.centerEnd : AlignmentDirectional.centerStart;
+
   GfTableColumn get tableColumn => GfTableColumn(
         label: label,
         flex: flex,
         width: width,
-        alignment: numeric ? AlignmentDirectional.centerEnd : AlignmentDirectional.centerStart,
+        alignment: _alignment,
       );
 
   Widget cell(Widget child) {
     final aligned = Padding(
       padding: const EdgeInsets.symmetric(horizontal: kGfCellPadding),
       child: Align(
-        alignment: numeric ? AlignmentDirectional.centerEnd : AlignmentDirectional.centerStart,
+        alignment: _alignment,
         child: DefaultTextStyle.merge(
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
@@ -207,6 +211,7 @@ class LedgerTable extends StatelessWidget {
     this.emptyHint,
     this.shrinkWrap = false,
     this.title,
+    this.titleCount,
     this.subtitle,
     this.actions = const [],
     this.tabs,
@@ -231,6 +236,9 @@ class LedgerTable extends StatelessWidget {
   final String? emptyHint;
   final bool shrinkWrap;
   final String? title;
+
+  /// Shown as a badge right after [title].
+  final int? titleCount;
   final String? subtitle;
   final List<Widget> actions;
   final Widget? tabs;
@@ -268,6 +276,7 @@ class LedgerTable extends StatelessWidget {
         totalCells: totalRow == null ? null : _cells(totalRow!),
         empty: empty,
         title: title,
+        titleCount: titleCount,
         subtitle: subtitle,
         actions: actions,
         minWidth: minWidth,
@@ -279,6 +288,7 @@ class LedgerTable extends StatelessWidget {
     final server = onPageChanged != null;
     return GfDataTable(
       title: title,
+      titleCount: titleCount,
       subtitle: subtitle,
       actions: actions,
       tabs: tabs,
@@ -314,6 +324,7 @@ class _CompactLedgerTable extends StatefulWidget {
     required this.itemLabel,
     this.totalCells,
     this.title,
+    this.titleCount,
     this.subtitle,
     this.actions = const [],
     this.minWidth,
@@ -328,6 +339,7 @@ class _CompactLedgerTable extends StatefulWidget {
   final bool showRowNumbers;
   final String itemLabel;
   final String? title;
+  final int? titleCount;
   final String? subtitle;
   final List<Widget> actions;
   final double? minWidth;
@@ -475,7 +487,22 @@ class _CompactLedgerTableState extends State<_CompactLedgerTable> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         if (title != null)
-                          Text(title, style: AppTypography.sectionTitle, maxLines: 1, overflow: TextOverflow.ellipsis),
+                          Row(
+                            children: [
+                              Flexible(
+                                child: Text(
+                                  title,
+                                  style: AppTypography.sectionTitle,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              if (widget.titleCount != null) ...[
+                                const SizedBox(width: 10),
+                                GfCountBadge(count: widget.titleCount!),
+                              ],
+                            ],
+                          ),
                         if (subtitle != null) ...[
                           const SizedBox(height: 2),
                           Text(
@@ -547,6 +574,78 @@ class AmountText extends StatelessWidget {
         color: color,
         fontFeatures: const [FontFeature.tabularFigures()],
       ),
+    );
+  }
+}
+
+/// One fixed hue per transaction type, the same on every page and in both
+/// themes, so a type is recognised by colour before its label is read.
+Color transactionTypeColor(TransactionType type) => switch (type) {
+      TransactionType.receipt => const Color(0xFF2E9E5B),
+      TransactionType.payment => const Color(0xFFD64545),
+      TransactionType.buy => const Color(0xFF2F7FE0),
+      TransactionType.sell => const Color(0xFFE07B1F),
+      TransactionType.openingCustomer || TransactionType.openingCash => const Color(0xFF159A9C),
+      TransactionType.customerAdjustment || TransactionType.cashAdjustment => const Color(0xFF8559D6),
+      TransactionType.expense => const Color(0xFFB8860B),
+      TransactionType.reversal => const Color(0xFF7F8A8C),
+    };
+
+/// Coloured pill with the transaction type; reversed transactions get an
+/// undo mark after it.
+class TransactionTypeBadge extends StatelessWidget {
+  const TransactionTypeBadge(this.type, {super.key, this.reversed = false});
+
+  final TransactionType type;
+  final bool reversed;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = transactionTypeColor(type);
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Flexible(
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.12),
+              borderRadius: AppRadius.pill,
+              border: Border.all(color: color.withValues(alpha: 0.35)),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 7,
+                  height: 7,
+                  decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+                ),
+                const SizedBox(width: 6),
+                Flexible(
+                  child: Text(
+                    type.labelFa,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppTypography.caption.copyWith(
+                      color: color,
+                      fontWeight: FontWeight.w700,
+                      decoration: reversed ? TextDecoration.lineThrough : null,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        if (reversed) ...[
+          const SizedBox(width: 6),
+          Tooltip(
+            message: 'برگشت‌شده',
+            child: Icon(Icons.undo_rounded, size: 16, color: AppColors.warning),
+          ),
+        ],
+      ],
     );
   }
 }

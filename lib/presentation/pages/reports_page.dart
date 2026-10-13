@@ -504,7 +504,7 @@ class _TrialBalanceReportState extends _ReportState<_TrialBalanceReport> {
               LedgerColumn.code(),
               LedgerColumn.primary('حساب'),
               LedgerColumn.amount('بدهکار'),
-              LedgerColumn.amount('بستانکار'),
+              LedgerColumn.amount('طلب مشتری)'),
               LedgerColumn.amount('مانده'),
             ],
             rows: [
@@ -687,7 +687,7 @@ class _GeneralLedgerReportState extends _ReportState<_GeneralLedgerReport> {
               LedgerColumn.text('نوع'),
               LedgerColumn.primary('مشتری'),
               LedgerColumn.amount('بدهکار'),
-              LedgerColumn.amount('بستانکار'),
+              LedgerColumn.amount('طلب مشتری)'),
               LedgerColumn.amount('مانده'),
             ],
             rows: [

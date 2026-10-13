@@ -392,7 +392,7 @@ class _MenuPanel extends StatelessWidget {
         children: [
           const SizedBox(height: 6),
           for (final item in items)
-            _MenuItem(
+            GfFilterMenuItem(
               icon: Icons.calendar_today_outlined,
               title: item.$2,
               subtitle: item.$3,
@@ -403,7 +403,7 @@ class _MenuPanel extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
             child: Divider(height: 1, color: AppColors.divider),
           ),
-          _MenuItem(
+          GfFilterMenuItem(
             icon: Icons.tune_rounded,
             title: 'dateFilter.customRange'.tr(),
             subtitle: 'dateFilter.customHint'.tr(),
@@ -417,8 +417,10 @@ class _MenuPanel extends StatelessWidget {
   }
 }
 
-class _MenuItem extends StatelessWidget {
-  const _MenuItem({
+/// One row of a filter menu panel ([GfDateFilter], [GfMenuFilter]).
+class GfFilterMenuItem extends StatelessWidget {
+  const GfFilterMenuItem({
+    super.key,
     required this.icon,
     required this.title,
     required this.subtitle,

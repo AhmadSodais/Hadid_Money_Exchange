@@ -185,7 +185,7 @@ class _TransactionDetailDialogState extends State<TransactionDetailDialog> {
             LedgerColumn.primary('حساب'),
             LedgerColumn.text('ارز'),
             LedgerColumn.amount('بدهکار'),
-            LedgerColumn.amount('بستانکار'),
+            LedgerColumn.amount('طلب مشتری)'),
           ],
           rows: [
             for (final l in tx.lines)

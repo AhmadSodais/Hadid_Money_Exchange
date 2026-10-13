@@ -2,6 +2,10 @@ import '../money/decimal.dart';
 import '../shared/business_date.dart';
 
 /// Business transaction types. Persisted by [name].
+///
+/// [prefix] starts the reference number (`RCP-0042`). Openings and
+/// adjustments read action + target: `OP`/`AD` then `C` (cash drawer) or
+/// `A` (customer account).
 enum TransactionType {
   /// رسید — cash physically received from a customer.
   receipt('RCP', 'رسید'),
@@ -19,13 +23,13 @@ enum TransactionType {
   openingCash('OPC', 'سرمایه اولیه'),
 
   /// Opening balance of a customer in one currency (posted once).
-  openingCustomer('OPB', 'بیلانس افتتاحیه'),
+  openingCustomer('OPA', 'بیلانس افتتاحیه'),
 
   /// Authorized cash correction (e.g. reconciliation discrepancy).
-  cashAdjustment('CAD', 'اصلاح صندوق'),
+  cashAdjustment('ADC', 'اصلاح صندوق'),
 
   /// Authorized correction of a customer balance.
-  customerAdjustment('KAD', 'اصلاح حساب مشتری'),
+  customerAdjustment('ADA', 'اصلاح حساب مشتری'),
 
   /// Operating expense paid from cash.
   expense('EXP', 'مصرف'),

@@ -66,7 +66,7 @@ void main() {
     // 3. Journal-derived cash account (trial balance).
     final tb = await q.trialBalance(asOf: asOf);
     int cashNet(String cur) => tb
-        .where((r) => r.accountCode == '1101' && r.currency == cur)
+        .where((r) => r.accountCode == '1100-0001' && r.currency == cur)
         .fold(0, (s, r) => s + r.netMinor);
     expect(cashNet('AFN'), afnMinor, reason: 'trial balance AFN');
     expect(cashNet('USD'), usdMinor, reason: 'trial balance USD');
@@ -78,7 +78,7 @@ void main() {
     expect(recUsd.expectedMinor, usdMinor, reason: 'reconciliation USD');
 
     // 5. Historical account statement (general ledger running balance).
-    final cashAccountId = tb.firstWhere((r) => r.accountCode == '1101').accountId;
+    final cashAccountId = tb.firstWhere((r) => r.accountCode == '1100-0001').accountId;
     final ledgerAfn = await q.accountLedger(cashAccountId, 'AFN');
     final ledgerUsd = await q.accountLedger(cashAccountId, 'USD');
     expect(ledgerAfn.last.running, afnMinor, reason: 'account statement AFN');

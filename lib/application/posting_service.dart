@@ -1,5 +1,4 @@
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
-import 'package:uuid/uuid.dart';
 
 import '../domain/accounting/account.dart';
 import '../domain/accounting/journal.dart';
@@ -8,6 +7,7 @@ import '../domain/errors/domain_errors.dart';
 import '../domain/exchange/exchange_rate.dart';
 import '../domain/security/permissions.dart';
 import '../domain/shared/business_date.dart';
+import '../domain/shared/ids.dart';
 import '../domain/transactions/financial_command.dart';
 import 'audit_writer.dart';
 import 'catalog_service.dart';
@@ -30,10 +30,8 @@ final class PostingService {
   final LedgerEvents _events;
   final DateTime Function() _clock;
 
-  static const _uuid = Uuid();
-
   /// Creates a fresh idempotency key for a form submission.
-  static String newIdempotencyKey() => _uuid.v4();
+  static String newIdempotencyKey() => Ids.key();
 
   // ------------------------------------------------------------------ post
 
@@ -267,7 +265,7 @@ final class PostingService {
             journal: reversal,
             date: originalDate,
             reason: reason.trim(),
-            idempotencyKey: '${replacement.idempotencyKey}:reversal',
+            idempotencyKey: Ids.editReversalKey(replacement.idempotencyKey),
             actor: actor,
             description: 'ویرایش ${original['reference_no']}');
         // The original's opening row was deactivated by the reversal above.
@@ -378,7 +376,7 @@ final class PostingService {
     final now = _clock().toUtc().toIso8601String();
     final type = TransactionType.reversal;
     final id = await txn.insert('transactions', {
-      'uuid': _uuid.v4(),
+      'uuid': Ids.key(),
       'reference_no': await _nextReference(txn, type),
       'type': type.name,
       'status': TransactionStatus.posted.name,
@@ -627,7 +625,7 @@ final class PostingService {
       Transaction txn, FinancialCommand c, PostingPlan plan, Actor actor) async {
     final now = _clock().toUtc().toIso8601String();
     final row = <String, Object?>{
-      'uuid': _uuid.v4(),
+      'uuid': Ids.key(),
       'reference_no': await _nextReference(txn, c.type),
       'type': c.type.name,
       'status': TransactionStatus.posted.name,
@@ -786,8 +784,7 @@ final class PostingService {
         'INSERT OR IGNORE INTO sequences(name, value) VALUES (?, 0)', [name]);
     await txn.rawUpdate('UPDATE sequences SET value = value + 1 WHERE name = ?', [name]);
     final rows = await txn.query('sequences', where: 'name = ?', whereArgs: [name]);
-    final n = rows.first['value'] as int;
-    return '${type.prefix}-${n.toString().padLeft(6, '0')}';
+    return Ids.reference(type, rows.first['value'] as int);
   }
 
   static int? _drawerOf(FinancialCommand c) => switch (c) {

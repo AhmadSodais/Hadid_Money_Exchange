@@ -13,6 +13,7 @@ export 'gf_empty_state.dart';
 export 'gf_image.dart';
 export 'gf_kpi_card.dart';
 export 'gf_loader.dart';
+export 'gf_menu_filter.dart';
 export 'gf_paginated_list_panel.dart';
 export 'gf_pagination_bar.dart';
 export 'gf_popup_menu.dart';

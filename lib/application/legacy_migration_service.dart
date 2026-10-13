@@ -7,6 +7,7 @@ import '../domain/money/currency.dart';
 import '../domain/money/decimal.dart';
 import '../domain/security/permissions.dart';
 import '../domain/shared/business_date.dart';
+import '../domain/shared/ids.dart';
 import '../domain/transactions/financial_command.dart';
 import '../infrastructure/backup/backup_service.dart';
 import '../infrastructure/legacy/legacy_reader.dart';
@@ -425,7 +426,7 @@ final class LegacyMigrationService {
     final BackupResult backup = await _app.backups.create(kind: 'pre_migration', actor: actor);
     final startedAt = _app.now().toUtc().toIso8601String();
     final date = BusinessDate.today(_app.now());
-    final keyPrefix = 'legacy-${analysis.fingerprint.substring(0, 16)}';
+    final keyPrefix = Ids.legacyKeyPrefix(analysis.fingerprint);
     var created = 0, balances = 0, cashPosted = 0;
     int? runId;
 
@@ -440,7 +441,7 @@ final class LegacyMigrationService {
           if (minor == 0) continue;
           await _app.posting.post(
             OpeningCustomerCommand(
-              idempotencyKey: '$keyPrefix-c${c.legacyId}-$cur',
+              idempotencyKey: '$keyPrefix-C${c.legacyId}-$cur',
               effectiveDate: date,
               customerId: record.id,
               currency: cur,
@@ -467,7 +468,7 @@ final class LegacyMigrationService {
           if (cash.amountMinor == 0) continue;
           await _app.posting.post(
             OpeningCashCommand(
-              idempotencyKey: '$keyPrefix-cash-${cash.currency}',
+              idempotencyKey: '$keyPrefix-CASH-${cash.currency}',
               effectiveDate: date,
               drawerId: drawer!,
               currency: cash.currency,

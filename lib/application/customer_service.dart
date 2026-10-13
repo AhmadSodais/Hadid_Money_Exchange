@@ -3,6 +3,7 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import '../domain/errors/domain_errors.dart';
 import '../domain/money/decimal.dart';
 import '../domain/security/permissions.dart';
+import '../domain/shared/ids.dart';
 import 'audit_writer.dart';
 import 'ledger_events.dart';
 import 'read_models.dart';
@@ -37,17 +38,17 @@ final class CustomerService {
     final clean = validate(input);
     final now = DateTime.now().toUtc().toIso8601String();
     final id = await _db.transaction((txn) async {
-      final id = await txn.insert('customers', {
+      final id = (await txn.rawQuery('SELECT COALESCE(MAX(id), 0) + 1 AS n FROM customers')).first['n'] as int;
+      await txn.insert('customers', {
         ...clean,
-        'code': 'TMP-${DateTime.now().microsecondsSinceEpoch}',
+        'id': id,
+        'code': Ids.customer(id),
         'status': 'active',
         'is_walk_in': 0,
         'legacy_id': legacyId,
         'created_at': now,
         'updated_at': now,
       });
-      await txn.update('customers', {'code': 'C-${id.toString().padLeft(5, '0')}'},
-          where: 'id = ?', whereArgs: [id]);
       await createLedgerAccount(txn, id, clean['name']! as String, now);
       await AuditWriter.write(txn,
           actor: actor,
@@ -64,9 +65,9 @@ final class CustomerService {
   static Future<void> createLedgerAccount(
       DatabaseExecutor txn, int customerId, String name, String now) async {
     final parent = await txn.query('accounts',
-        columns: ['id'], where: "code = '2100'", limit: 1);
+        columns: ['id'], where: 'code = ?', whereArgs: [Ids.customerAccountParent], limit: 1);
     await txn.insert('accounts', {
-      'code': '2100-${customerId.toString().padLeft(6, '0')}',
+      'code': Ids.customerAccount(customerId),
       'name_fa': name,
       'type': 'liability',
       'normal_side': 'credit',

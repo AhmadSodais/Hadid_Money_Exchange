@@ -4,6 +4,7 @@ import '../domain/errors/domain_errors.dart';
 import '../domain/money/currency.dart';
 import '../domain/money/decimal.dart';
 import '../domain/security/permissions.dart';
+import '../domain/shared/ids.dart';
 import 'audit_writer.dart';
 import 'ledger_events.dart';
 
@@ -118,7 +119,7 @@ final class CatalogService {
     await _db.transaction((txn) async {
       await _requireUniqueDrawerName(txn, clean);
       final next = (await txn.rawQuery('SELECT COALESCE(MAX(id), 0) + 1 AS n FROM cash_drawers')).first['n'] as int;
-      final code = 'DRAWER-${next.toString().padLeft(2, '0')}';
+      final code = Ids.drawer(next);
       await txn.insert('cash_drawers', {
         'id': next,
         'code': code,
@@ -126,9 +127,10 @@ final class CatalogService {
         'is_active': 1,
         'created_at': now,
       });
-      final parent = await txn.query('accounts', columns: ['id'], where: "code = '1100'", limit: 1);
+      final parent = await txn.query('accounts',
+          columns: ['id'], where: 'code = ?', whereArgs: [Ids.cashAccountParent], limit: 1);
       await txn.insert('accounts', {
-        'code': next < 100 ? '${1100 + next}' : '1100-$next',
+        'code': Ids.cashAccount(next),
         'name_fa': clean,
         'type': 'asset',
         'normal_side': 'debit',

@@ -27,7 +27,7 @@ void main() {
     expect(second.nameFa, 'صندوق دوم');
     expect((await h.app.catalog.drawers()).map((d) => d.id), [1, second.id]);
     final account = await h.app.db.query('accounts', where: "role = 'cash' AND drawer_id = ?", whereArgs: [second.id]);
-    expect(account.single['code'], '1102');
+    expect(account.single['code'], '1100-0002');
 
     await h.openingCash('USD', usd(100));
     await openingCash(second.id, 'USD', usd(40));

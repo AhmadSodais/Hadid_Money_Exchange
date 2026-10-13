@@ -68,7 +68,7 @@ final class JournalDraft {
           (line.creditMinor > 0 && line.debitMinor == 0);
       if (!validSide) {
         throw InvariantViolation('journal.badLine',
-            'هر سطر باید فقط بدهکار یا فقط بستانکار مثبت باشد: $line');
+            'هر سطر باید فقط بدهکار یا فقط طلب مشتری) مثبت باشد: $line');
       }
       totals.update(line.currency, (v) => v + line.net,
           ifAbsent: () => line.net);

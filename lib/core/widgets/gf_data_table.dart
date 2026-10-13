@@ -10,6 +10,7 @@ import '../theme/app_spacing.dart';
 import '../theme/app_typography.dart';
 import '../utils/gf_pagination.dart';
 import 'gf_card.dart';
+import 'gf_count_box.dart';
 import 'gf_loader.dart';
 import 'gf_pagination_bar.dart';
 import 'gf_responsive.dart';
@@ -60,6 +61,7 @@ class GfDataTable extends StatefulWidget {
     required this.rowCount,
     required this.rowBuilder,
     this.title,
+    this.titleCount,
     this.subtitle,
     this.actions = const [],
     this.tabs,
@@ -82,6 +84,9 @@ class GfDataTable extends StatefulWidget {
   final int rowCount;
   final Widget Function(BuildContext context, int index) rowBuilder;
   final String? title;
+
+  /// Shown as a badge right after [title].
+  final int? titleCount;
   final String? subtitle;
   final List<Widget> actions;
   final Widget? tabs;
@@ -289,11 +294,21 @@ class _GfDataTableState extends State<GfDataTable> {
                         ? Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(
-                                widget.title!,
-                                style: AppTypography.sectionTitle,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
+                              Row(
+                                children: [
+                                  Flexible(
+                                    child: Text(
+                                      widget.title!,
+                                      style: AppTypography.sectionTitle,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                  if (widget.titleCount != null) ...[
+                                    const SizedBox(width: 10),
+                                    GfCountBadge(count: widget.titleCount!),
+                                  ],
+                                ],
                               ),
                               if (widget.subtitle != null) ...[
                                 const SizedBox(height: 2),

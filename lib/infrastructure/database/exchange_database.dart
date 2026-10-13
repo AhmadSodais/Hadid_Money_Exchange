@@ -3,10 +3,12 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import '../../domain/accounting/account.dart';
 import '../../domain/money/currency.dart';
 import '../../domain/security/permissions.dart';
+import '../../domain/shared/ids.dart';
 import 'schema_v1.dart';
 import 'schema_v2.dart';
 import 'schema_v3.dart';
 import 'schema_v4.dart';
+import 'schema_v5.dart';
 
 /// A versioned schema migration applied inside a single transaction.
 final class SchemaMigration {
@@ -49,6 +51,7 @@ abstract final class ExchangeDatabase {
         await txn.execute(sql);
       }
     }),
+    SchemaMigration(5, 'short_identifiers', (txn, seed) => normalizeIdentifiers(txn)),
   ];
 
   static int get latestVersion => migrations.last.version;
@@ -176,7 +179,7 @@ abstract final class ExchangeDatabase {
 
     await txn.insert('cash_drawers', {
       'id': 1,
-      'code': 'MAIN',
+      'code': Ids.drawer(1),
       'name_fa': 'صندوق اصلی',
       'is_active': 1,
       'created_at': now,
@@ -184,7 +187,7 @@ abstract final class ExchangeDatabase {
 
     await txn.insert('customers', {
       'id': 1,
-      'code': 'WALK-IN',
+      'code': Ids.customer(1),
       'name': 'مشتری متفرقه',
       'status': 'active',
       'is_walk_in': 1,
@@ -219,16 +222,17 @@ abstract final class ExchangeDatabase {
     const d = NormalSide.debit;
     const c = NormalSide.credit;
     final assets = await account('1000', 'دارایی‌ها', AccountType.asset, d, AccountRole.control);
-    final cash = await account('1100', 'صندوق‌ها', AccountType.asset, d, AccountRole.control,
+    final cash = await account(Ids.cashAccountParent, 'صندوق‌ها', AccountType.asset, d,
+        AccountRole.control,
         parentId: assets);
-    await account('1101', 'صندوق اصلی', AccountType.asset, d, AccountRole.cash,
+    await account(Ids.cashAccount(1), 'صندوق اصلی', AccountType.asset, d, AccountRole.cash,
         parentId: cash, drawerId: 1);
     final liabilities =
         await account('2000', 'بدهی‌ها', AccountType.liability, c, AccountRole.control);
     final customers = await account(
-        '2100', 'حسابات مشتریان', AccountType.liability, c, AccountRole.control,
+        Ids.customerAccountParent, 'حسابات مشتریان', AccountType.liability, c, AccountRole.control,
         parentId: liabilities);
-    await account('2100-000001', 'مشتری متفرقه', AccountType.liability, c,
+    await account(Ids.customerAccount(1), 'مشتری متفرقه', AccountType.liability, c,
         AccountRole.customer, parentId: customers, customerId: 1);
     final equity = await account('3000', 'سرمایه', AccountType.equity, c, AccountRole.control);
     await account('3100', 'سرمایه و بیلانس افتتاحیه', AccountType.equity, c,

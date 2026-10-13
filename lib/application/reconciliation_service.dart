@@ -3,6 +3,7 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import '../domain/errors/domain_errors.dart';
 import '../domain/security/permissions.dart';
 import '../domain/shared/business_date.dart';
+import '../domain/shared/ids.dart';
 import '../domain/transactions/financial_command.dart';
 import 'audit_writer.dart';
 import 'ledger_events.dart';
@@ -178,10 +179,11 @@ final class ReconciliationService {
     }
     // A posted adjustment for this record that is not linked (the link write
     // failed after the posting committed) is re-linked, never duplicated.
+    final keyPrefix = Ids.reconciliationKeyPrefix(recordId);
     final unlinked = await _db.rawQuery(
         "SELECT id FROM transactions WHERE idempotency_key LIKE ? AND status = 'posted' "
         'ORDER BY id DESC LIMIT 1',
-        ['reconciliation-adjust-$recordId-%']);
+        ['$keyPrefix%']);
     if (unlinked.isNotEmpty) {
       await _db.update('reconciliation_records',
           {'adjustment_transaction_id': unlinked.first['id']},
@@ -191,10 +193,10 @@ final class ReconciliationService {
     }
     final prior = await _db.rawQuery(
         'SELECT COUNT(*) AS n FROM transactions WHERE idempotency_key LIKE ?',
-        ['reconciliation-adjust-$recordId-%']);
+        ['$keyPrefix%']);
     final tx = await _posting.post(
       CashAdjustmentCommand(
-        idempotencyKey: 'reconciliation-adjust-$recordId-${prior.first['n']}',
+        idempotencyKey: '$keyPrefix${prior.first['n']}',
         effectiveDate: rec.businessDate,
         drawerId: rec.drawerId,
         currency: rec.currency,

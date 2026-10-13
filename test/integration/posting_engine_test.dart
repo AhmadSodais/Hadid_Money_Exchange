@@ -263,7 +263,7 @@ void main() {
           .create(const CustomerInput(name: 'Ahmad Shah', phone: '0700 123 456'), h.owner);
       expect((await h.app.customers.search('ahmad')).single.name, 'Ahmad Shah');
       expect((await h.app.customers.search('۰۷۰۰')).single.name, 'Ahmad Shah');
-      expect((await h.app.customers.search('C-0000')), hasLength(1));
+      expect((await h.app.customers.search('C-0002')), hasLength(1));
       expect(await h.app.customers.search('متفرقه'), isEmpty);
       expect(await h.app.customers.search('متفرقه', includeWalkIn: true), hasLength(1));
     });

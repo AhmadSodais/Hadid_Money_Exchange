@@ -34,13 +34,40 @@ class CustomerStatementPage extends StatefulWidget {
 class _CustomerStatementPageState extends State<CustomerStatementPage> with RevisionReload {
   CustomerRecord? _customer;
   List<CustomerBalance> _balances = const [];
-  Currency? _currency;
+
+  /// `null` = every currency.
+  String? _currencyCode;
 
   /// `null` = the whole history.
   DateFilterValue? _period;
-  CustomerStatement? _statement;
+
+  /// Every currency's lines in the period, newest first.
+  List<StatementLine> _lines = const [];
   bool _loading = true;
   bool _notFound = false;
+  final _search = TextEditingController();
+  _TypeFilter _typeFilter = _TypeFilter.all;
+
+  @override
+  void dispose() {
+    _search.dispose();
+    super.dispose();
+  }
+
+  List<StatementLine> _visibleLines(AppSession s) {
+    final types = _typeFilter.types;
+    final query = _search.text.trim().toLowerCase();
+    return [
+      for (final l in _lines)
+        if ((_currencyCode == null || l.currency == _currencyCode) &&
+            (types == null || types.contains(l.type)) &&
+            (query.isEmpty ||
+                l.referenceNo.toLowerCase().contains(query) ||
+                l.type.labelFa.contains(query) ||
+                (s.currency(l.currency)?.nameFa.contains(query) ?? false)))
+          l,
+    ];
+  }
 
   @override
   Future<void> reload() async {
@@ -51,27 +78,20 @@ class _CustomerStatementPageState extends State<CustomerStatementPage> with Revi
       return;
     }
     final balances = await s.queries.customerBalances(customer.id);
-    var currency = _currency;
-    if (currency == null) {
-      final codes = balances.map((b) => b.currency).toList();
-      currency = codes.isNotEmpty
-          ? session.currency(codes.first)
-          : (session.activeCurrencies.isEmpty ? null : session.activeCurrencies.first);
-    }
-    final statement = currency == null
-        ? null
-        : await s.queries.customerStatement(
-            customer,
-            currency.code,
-            from: _period == null ? null : BusinessDate.fromDateTime(_period!.from),
-            to: _period == null ? null : BusinessDate.fromDateTime(_period!.to),
-          );
+    final from = _period == null ? null : BusinessDate.fromDateTime(_period!.from);
+    final to = _period == null ? null : BusinessDate.fromDateTime(_period!.to);
+    final lines = <StatementLine>[
+      for (final b in balances)
+        ...(await s.queries.customerStatement(customer, b.currency, from: from, to: to)).lines,
+    ]..sort((a, b) {
+        final byDate = b.effectiveDate.compareTo(a.effectiveDate);
+        return byDate != 0 ? byDate : b.transactionId.compareTo(a.transactionId);
+      });
     if (!mounted) return;
     setState(() {
       _customer = customer;
       _balances = balances;
-      _currency = currency;
-      _statement = statement;
+      _lines = lines;
       _loading = false;
     });
   }
@@ -83,10 +103,11 @@ class _CustomerStatementPageState extends State<CustomerStatementPage> with Revi
       return const PageScaffold(title: 'صورت‌حساب', body: Center(child: Text('مشتری پیدا نشد.')));
     }
     final customer = _customer;
-    final st = _statement;
-    final c = _currency;
     final canOpening = s.can(Permissions.openingBalancesPost);
     final canAdjust = s.can(Permissions.adjustmentsPost);
+    final lines = _visibleLines(s);
+    final filtered =
+        _currencyCode != null || _typeFilter != _TypeFilter.all || _search.text.trim().isNotEmpty;
     return PageScaffold(
       title: customer == null ? 'صورت‌حساب مشتری' : 'صورت‌حساب ${customer.name}',
       subtitle: customer == null
@@ -146,84 +167,123 @@ class _CustomerStatementPageState extends State<CustomerStatementPage> with Revi
           : Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Row(
-                  children: [
-                    GfCountBox(
-                      label: 'ردیف‌های صورت‌حساب',
-                      count: st?.lines.length ?? 0,
-                      icon: AppAssets.invoiceFilled,
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: LayoutBuilder(builder: (context, constraints) {
-                        final w = constraints.maxWidth;
-                        final columns = w >= 1100 ? 5 : (w >= 820 ? 4 : (w >= 560 ? 3 : 2));
-                        const gap = AppSpacing.sm;
-                        final cardWidth = (w - gap * (columns - 1)) / columns;
-                        return Wrap(
-                          spacing: gap,
-                          runSpacing: gap,
-                          children: [
-                            for (final b in _balances)
-                              if (s.currency(b.currency) case final cur?)
-                                SizedBox(
-                                  width: cardWidth,
-                                  child: _BalanceCard(
-                                    currency: cur,
-                                    positionMinor: b.positionMinor,
-                                    selected: c?.code == cur.code,
-                                    onTap: () {
-                                      setState(() => _currency = cur);
-                                      reload();
-                                    },
-                                  ),
-                                ),
-                          ],
-                        );
-                      }),
-                    ),
-                  ],
-                ),
+                LayoutBuilder(builder: (context, constraints) {
+                  final w = constraints.maxWidth;
+                  final columns = w >= 1100 ? 6 : (w >= 820 ? 4 : (w >= 560 ? 3 : 2));
+                  const gap = AppSpacing.sm;
+                  final cardWidth = (w - gap * (columns - 1)) / columns;
+                  return Wrap(
+                    spacing: gap,
+                    runSpacing: gap,
+                    children: [
+                      for (final b in _balances)
+                        if (s.currency(b.currency) case final cur?)
+                          SizedBox(
+                            width: cardWidth,
+                            child: _BalanceCard(
+                              currency: cur,
+                              positionMinor: b.positionMinor,
+                              selected: _currencyCode == cur.code,
+                              onTap: () => setState(
+                                () => _currencyCode = _currencyCode == cur.code ? null : cur.code,
+                              ),
+                            ),
+                          ),
+                    ],
+                  );
+                }),
                 const SizedBox(height: AppSpacing.sm),
                 Expanded(
                   child: LedgerTable(
-                    title: c == null ? 'صورت‌حساب' : 'صورت‌حساب ${c.nameFa}',
-                    subtitle: st == null || c == null
-                        ? null
-                        : 'مانده ابتدای دوره: ${MoneyFormat.position(st.openingPositionMinor, c)}   —   '
-                            'مانده پایان دوره: ${MoneyFormat.position(st.closingPositionMinor, c)}',
+                    title: 'معاملات مشتری',
+                    titleCount: lines.length,
+                    actions: [
+                      // One action keeps the table from stacking the controls under the title.
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          GfMenuFilter<_TypeFilter>(
+                            value: _typeFilter,
+                            width: 160,
+                            options: [
+                              for (final f in _TypeFilter.values)
+                                GfMenuFilterOption(value: f, label: f.label, icon: f.icon, subtitle: f.hint),
+                            ],
+                            onChanged: (f) => setState(() => _typeFilter = f),
+                          ),
+                          const SizedBox(width: AppSpacing.sm),
+                          GfMenuFilter<String?>(
+                            value: _currencyCode,
+                            width: 150,
+                            panelWidth: 240,
+                            options: [
+                              const GfMenuFilterOption(
+                                value: null,
+                                label: 'همه ارزها',
+                                icon: Icons.public_rounded,
+                                subtitle: 'معاملات همه ارزهای مشتری',
+                              ),
+                              for (final b in _balances)
+                                GfMenuFilterOption(
+                                  value: b.currency,
+                                  label: s.currency(b.currency)?.nameFa ?? b.currency,
+                                  icon: Icons.payments_outlined,
+                                  subtitle: b.currency,
+                                ),
+                            ],
+                            onChanged: (code) => setState(() => _currencyCode = code),
+                          ),
+                          const SizedBox(width: AppSpacing.sm),
+                          GfSearchField(
+                            controller: _search,
+                            width: 240,
+                            hintText: 'شماره سند یا نوع معامله',
+                            showShortcutHint: false,
+                            onChanged: (_) => setState(() {}),
+                          ),
+                        ],
+                      ),
+                    ],
                     minWidth: 1000,
-                    itemLabel: 'ردیف',
-                    emptyText: 'در این دوره معامله‌ای ثبت نشده است.',
-                    emptyHint: _balances.isEmpty ? 'حساب این مشتری در همه ارزها تسویه است.' : null,
+                    itemLabel: 'معامله',
+                    emptyText: filtered
+                        ? 'معامله‌ای با این جستجو یا فیلتر یافت نشد.'
+                        : 'در این دوره معامله‌ای ثبت نشده است.',
+                    emptyHint: filtered
+                        ? 'ارز، نوع معامله یا عبارت جستجو را تغییر دهید.'
+                        : (_balances.isEmpty ? 'برای این مشتری هنوز معامله‌ای ثبت نشده است.' : null),
+                    // Equal shares, so the columns spread evenly across the whole row.
                     columns: const [
-                      LedgerColumn.date(),
-                      LedgerColumn.reference(),
-                      LedgerColumn.text('نوع'),
-                      LedgerColumn.description('شرح'),
-                      LedgerColumn.amount('بدهکار'),
-                      LedgerColumn.amount('بستانکار'),
-                      LedgerColumn.amount('مانده'),
+                      LedgerColumn('تاریخ'),
+                      LedgerColumn('شماره سند'),
+                      LedgerColumn('نوع معامله'),
+                      LedgerColumn('جهت'),
+                      LedgerColumn('ارز'),
+                      LedgerColumn('مبلغ', numeric: true),
+                      // The amount hugs its end edge; this gap keeps it off the description.
+                      LedgerColumn('', width: 24),
+                      LedgerColumn('شرح'),
                     ],
                     rows: [
-                      if (st != null && c != null)
-                        for (final l in st.lines)
-                          [
-                            Text(DateFormatFa.business(l.effectiveDate), style: AppTypography.body),
-                            Text(l.referenceNo, style: AppTypography.caption, textDirection: TextDirection.ltr),
-                            Text(
-                              l.type.labelFa + (l.status == TransactionStatus.reversed ? ' (برگشت‌شده)' : ''),
-                              style: AppTypography.body.copyWith(
-                                color: l.status == TransactionStatus.reversed ? AppColors.warning : null,
-                              ),
-                            ),
-                            Text(l.description ?? '', style: AppTypography.body),
-                            l.debitMinor == 0 ? const Text('') : AmountText(l.debitMinor, c),
-                            l.creditMinor == 0 ? const Text('') : AmountText(l.creditMinor, c),
-                            AmountText(l.runningPositionMinor, c, signColor: true, bold: true),
-                          ],
+                      for (final l in lines)
+                        [
+                          Text(DateFormatFa.business(l.effectiveDate), style: AppTypography.body),
+                          Text(l.referenceNo, style: AppTypography.caption, textDirection: TextDirection.ltr),
+                          TransactionTypeBadge(l.type, reversed: l.status == TransactionStatus.reversed),
+                          _DirectionCell(intoAccount: l.creditMinor > 0),
+                          Text(s.currency(l.currency)?.nameFa ?? l.currency, style: AppTypography.bodyMedium),
+                          Opacity(
+                            opacity: l.status == TransactionStatus.reversed ? 0.5 : 1,
+                            child: AmountText(l.debitMinor + l.creditMinor, s.currency(l.currency), bold: true),
+                          ),
+                          const SizedBox.shrink(),
+                          Text(
+                            (l.description?.trim().isNotEmpty ?? false) ? l.description!.trim() : '—',
+                            style: AppTypography.body.copyWith(color: AppColors.textSecondary),
+                          ),
+                        ],
                     ],
-                    onTapRow: (i) => TransactionDetailDialog.show(context, st!.lines[i].transactionId),
+                    onTapRow: (i) => TransactionDetailDialog.show(context, lines[i].transactionId),
                   ),
                 ),
               ],
@@ -231,6 +291,53 @@ class _CustomerStatementPageState extends State<CustomerStatementPage> with Revi
     );
   }
 
+}
+
+enum _TypeFilter {
+  all('همه معاملات', 'همه انواع معامله در این ارز', Icons.list_alt_rounded, null),
+  receipt('رسید', 'پول دریافت‌شده از مشتری', Icons.south_west_rounded, {TransactionType.receipt}),
+  payment('برد', 'پول پرداخت‌شده به مشتری', Icons.north_east_rounded, {TransactionType.payment}),
+  buy('خرید', 'خرید ارز از مشتری', Icons.shopping_cart_outlined, {TransactionType.buy}),
+  sell('فروش', 'فروش ارز به مشتری', Icons.sell_outlined, {TransactionType.sell}),
+  other('سایر', 'بیلانس افتتاحیه، اصلاح حساب و برگشت', Icons.more_horiz_rounded, {
+    TransactionType.openingCustomer,
+    TransactionType.customerAdjustment,
+    TransactionType.reversal,
+  });
+
+  const _TypeFilter(this.label, this.hint, this.icon, this.types);
+
+  final String label;
+  final String hint;
+  final IconData icon;
+  final Set<TransactionType>? types;
+}
+
+/// Whether the line added money to the customer's account or took it out.
+class _DirectionCell extends StatelessWidget {
+  const _DirectionCell({required this.intoAccount});
+
+  final bool intoAccount;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = intoAccount ? AppColors.success : AppColors.error;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(intoAccount ? Icons.south_west_rounded : Icons.north_east_rounded, size: 16, color: color),
+        const SizedBox(width: 6),
+        Flexible(
+          child: Text(
+            intoAccount ? 'واریز به حساب' : 'برداشت از حساب',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: AppTypography.body.copyWith(color: color, fontWeight: FontWeight.w600),
+          ),
+        ),
+      ],
+    );
+  }
 }
 
 /// Smaller take on the dashboard currency card: the customer's overall

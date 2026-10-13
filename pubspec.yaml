@@ -23,7 +23,6 @@ dependencies:
   sqflite_common_ffi: ^2.4.2
   shared_preferences: ^2.5.3
   file_picker: ^10.2.0
-  uuid: ^4.6.0
   excel: ^4.0.6
   shamsi_date: ^1.1.1
   persian_datetime_picker: ^3.2.0
