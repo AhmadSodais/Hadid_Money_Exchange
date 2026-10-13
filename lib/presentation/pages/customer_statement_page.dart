@@ -177,7 +177,6 @@ class _CustomerStatementPageState extends State<CustomerStatementPage> with Revi
     }
     final customer = _customer;
     final canOpening = s.can(Permissions.openingBalancesPost);
-    final canAdjust = s.can(Permissions.adjustmentsPost);
     final txs = _visible(s);
     final changedCount = _txs.where((t) => !t.isActive).length;
     final filtered =
@@ -205,27 +204,11 @@ class _CustomerStatementPageState extends State<CustomerStatementPage> with Revi
             reload();
           },
         ),
-        if (customer != null && !customer.isWalkIn && (canOpening || canAdjust))
-          GfActionMenu(
-            label: 'بیلانس و اصلاح حساب',
-            icon: Icons.account_balance_wallet_outlined,
-            width: 210,
-            items: [
-              if (canOpening)
-                GfActionMenuItem(
-                  icon: Icons.flag_outlined,
-                  title: 'بیلانس افتتاحیه',
-                  subtitle: 'ثبت مانده ابتدایی مشتری در یک ارز',
-                  onTap: () => _SignedAmountDialog.show(context, customer: customer, adjustment: false),
-                ),
-              if (canAdjust)
-                GfActionMenuItem(
-                  icon: Icons.tune,
-                  title: 'اصلاح حساب',
-                  subtitle: 'اصلاح مانده حساب با ذکر دلیل',
-                  onTap: () => _SignedAmountDialog.show(context, customer: customer, adjustment: true),
-                ),
-            ],
+        if (customer != null && !customer.isWalkIn && canOpening)
+          GfSecondaryButton(
+            label: 'بیلانس افتتاحیه',
+            icon: Icons.flag_outlined,
+            onPressed: () => _SignedAmountDialog.show(context, customer: customer, adjustment: false),
           ),
         Directionality(
           textDirection: TextDirection.ltr,

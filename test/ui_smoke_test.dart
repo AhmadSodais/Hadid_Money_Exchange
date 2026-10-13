@@ -84,7 +84,9 @@ void main() {
 
   Future<void> settle(WidgetTester tester) async {
     for (var i = 0; i < 15; i++) {
-      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 150)));
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 150)),
+      );
       await tester.pump(const Duration(milliseconds: 100));
     }
   }
@@ -104,7 +106,9 @@ void main() {
 
   // One app instance visits every route: easy_localization only finishes
   // loading its asset bundle once per test process.
-  testWidgets('every screen renders with data and without exceptions', (tester) async {
+  testWidgets('every screen renders with data and without exceptions', (
+    tester,
+  ) async {
     tester.view.physicalSize = const Size(1600, 1000);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
@@ -154,15 +158,35 @@ void main() {
       await settle(tester);
 
       expect(tester.takeException(), isNull, reason: route);
-      expect(router.routeInformationProvider.value.uri.path, Uri.parse(route).path);
-      expect(find.byType(pageType, skipOffstage: false), findsOneWidget, reason: route);
-      expect(find.text('روزنامچه معاملات', skipOffstage: false), findsWidgets, reason: 'sidebar on $route');
+      expect(
+        router.routeInformationProvider.value.uri.path,
+        Uri.parse(route).path,
+      );
+      expect(
+        find.byType(pageType, skipOffstage: false),
+        findsOneWidget,
+        reason: route,
+      );
+      expect(
+        find.text('روزنامچه معاملات', skipOffstage: false),
+        findsWidgets,
+        reason: 'sidebar on $route',
+      );
 
       if (route == AppRoutes.dashboard) {
-        expect(find.text('96,500.00', skipOffstage: false), findsWidgets, reason: 'AFN cash on dashboard');
+        expect(
+          find.text('96,500.00', skipOffstage: false),
+          findsWidgets,
+          reason: 'AFN cash on dashboard',
+        );
       }
-      if (route == AppRoutes.customers || route.startsWith(AppRoutes.customerStatement)) {
-        expect(find.textContaining('کریم', skipOffstage: false), findsWidgets, reason: route);
+      if (route == AppRoutes.customers ||
+          route.startsWith(AppRoutes.customerStatement)) {
+        expect(
+          find.textContaining('کریم', skipOffstage: false),
+          findsWidgets,
+          reason: route,
+        );
       }
       if (route == AppRoutes.reports) {
         final tabBar = find.byType(TabBar, skipOffstage: false);
@@ -177,20 +201,31 @@ void main() {
       if (route == AppRoutes.journal) {
         final ctx = tester.element(find.byType(JournalPage));
         final txs = (await tester.runAsync(
-            () => h.app.queries.journal(const JournalFilter(activeOnly: true))))!;
-        for (final t in txs.where((t) => t.type == TransactionType.receipt || t.isExchange)) {
+          () => h.app.queries.journal(const JournalFilter(activeOnly: true)),
+        ))!;
+        for (final t in txs.where(
+          (t) => t.type == TransactionType.receipt || t.isExchange,
+        )) {
           unawaited(TransactionEditDialog.show(ctx, t));
           await settle(tester);
-          expect(tester.takeException(), isNull, reason: 'edit dialog ${t.type.name}');
+          expect(
+            tester.takeException(),
+            isNull,
+            reason: 'edit dialog ${t.type.name}',
+          );
           expect(find.text('ذخیره ویرایش'), findsOneWidget);
-          Navigator.of(tester.element(find.byType(TransactionEditDialog))).pop();
+          Navigator.of(
+            tester.element(find.byType(TransactionEditDialog)),
+          ).pop();
           await settle(tester);
         }
         unawaited(TransactionDetailDialog.show(ctx, txs.first.id));
         await settle(tester);
         expect(tester.takeException(), isNull, reason: 'detail dialog');
         expect(find.text('ویرایش'), findsWidgets);
-        Navigator.of(tester.element(find.byType(TransactionDetailDialog))).pop();
+        Navigator.of(
+          tester.element(find.byType(TransactionDetailDialog)),
+        ).pop();
         await settle(tester);
       }
       if (route == AppRoutes.reconciliation) {
@@ -200,21 +235,35 @@ void main() {
         final dialog = find.byType(DailyBalanceDialog);
         expect(dialog, findsOneWidget);
         final amount = find.byWidgetPredicate(
-            (w) => w is GfTextField && (w.label ?? '').startsWith('مبلغ شمارش‌شده'));
-        await tester.enterText(find.descendant(of: amount, matching: find.byType(TextField)), '1000');
+          (w) =>
+              w is GfTextField && (w.label ?? '').startsWith('مبلغ شمارش‌شده'),
+        );
+        await tester.enterText(
+          find.descendant(of: amount, matching: find.byType(TextField)),
+          '1000',
+        );
         await settle(tester);
-        await tester.tap(find.descendant(of: dialog, matching: find.text('ثبت بیلانس')).last);
+        await tester.tap(
+          find.descendant(of: dialog, matching: find.text('ثبت بیلانس')).last,
+        );
         await settle(tester);
         expect(tester.takeException(), isNull, reason: 'saving a balance');
         expect(dialog, findsNothing);
-        final saved = (await tester.runAsync(() => h.app.reconciliation.records()))!;
+        final saved = (await tester.runAsync(
+          () => h.app.reconciliation.records(),
+        ))!;
         expect(saved, hasLength(1));
       }
       if (route == AppRoutes.settings) {
         final tiles = find.byType(SettingsNavTile);
         expect(tiles, findsWidgets);
-        final labels = [for (final e in tiles.evaluate()) (e.widget as SettingsNavTile).label];
-        expect(labels, containsAll(['اطلاعات صرافی', 'مدیریت داده‌ها', 'درباره برنامه']));
+        final labels = [
+          for (final e in tiles.evaluate()) (e.widget as SettingsNavTile).label,
+        ];
+        expect(
+          labels,
+          containsAll(['اطلاعات صرافی', 'مدیریت داده‌ها', 'درباره برنامه']),
+        );
         expect(labels, isNot(contains('قوانین ثبت اسناد')));
         expect(labels, isNot(contains('ورودی و خروجی اکسل')));
         expect(labels, isNot(contains('انتقال از برنامه قبلی')));
@@ -226,12 +275,31 @@ void main() {
           final label = tester.widget<SettingsNavTile>(tile).label;
           await tester.tap(tile);
           await settle(tester);
-          expect(tester.takeException(), isNull, reason: 'settings section $label');
-          expect(tester.widget<SettingsNavTile>(tiles.at(i)).selected, isTrue, reason: label);
+          expect(
+            tester.takeException(),
+            isNull,
+            reason: 'settings section $label',
+          );
+          expect(
+            tester.widget<SettingsNavTile>(tiles.at(i)).selected,
+            isTrue,
+            reason: label,
+          );
           if (label == 'اطلاعات صرافی') {
-            for (final field in ['نام صرافی', 'ولایت / شهر', 'آدرس صرافی', 'نام کاربری', 'شماره تماس']) {
-              expect(find.byWidgetPredicate((w) => w is GfTextField && w.label == field), findsOneWidget,
-                  reason: field);
+            for (final field in [
+              'نام صرافی',
+              'ولایت / شهر',
+              'آدرس صرافی',
+              'نام کاربری',
+              'شماره تماس',
+            ]) {
+              expect(
+                find.byWidgetPredicate(
+                  (w) => w is GfTextField && w.label == field,
+                ),
+                findsOneWidget,
+                reason: field,
+              );
             }
             expect(find.text('اجازه منفی شدن موجودی نقد صندوق'), findsNothing);
           }
@@ -248,10 +316,19 @@ void main() {
             await tester.scrollUntilVisible(
               find.text('سوابق خروجی خودکار اکسل'),
               300,
-              scrollable: find.ancestor(of: find.text('خروجی خودکار اکسل').first, matching: find.byType(Scrollable)).first,
+              scrollable: find
+                  .ancestor(
+                    of: find.text('خروجی خودکار اکسل').first,
+                    matching: find.byType(Scrollable),
+                  )
+                  .first,
             );
             await settle(tester);
-            expect(tester.takeException(), isNull, reason: 'automatic export history');
+            expect(
+              tester.takeException(),
+              isNull,
+              reason: 'automatic export history',
+            );
           }
           if (label == 'ظاهر') {
             expect(find.text('تقویم نمایش'), findsNothing);
@@ -260,7 +337,11 @@ void main() {
         }
       }
       if (route != AppRoutes.settings) {
-        expect(find.text('خروجی اکسل'), findsNothing, reason: 'no per-page Excel output on $route');
+        expect(
+          find.text('خروجی اکسل'),
+          findsNothing,
+          reason: 'no per-page Excel output on $route',
+        );
       }
     }
     await tester.pumpWidget(const SizedBox.shrink());
