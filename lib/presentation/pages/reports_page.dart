@@ -279,7 +279,7 @@ class _DailyReportState extends _ReportState<_DailyReport> {
           rows: [
             for (final t in _types)
               [
-                Text(t.type.labelFa),
+                TransactionTypeBadge(t.type),
                 Text(_cur(s, t.currency)),
                 Text('${t.count}'),
                 AmountText(t.totalMinor, s.currency(t.currency)),
@@ -417,7 +417,7 @@ class _ExchangeActivityReportState extends _ReportState<_ExchangeActivityReport>
             rows: [
               for (final r in _rows)
                 [
-                  Text(r.type.labelFa),
+                  TransactionTypeBadge(r.type),
                   Text(_cur(s, r.baseCurrency)),
                   Text(_cur(s, r.quoteCurrency)),
                   Text('${r.count}'),
@@ -695,7 +695,7 @@ class _GeneralLedgerReportState extends _ReportState<_GeneralLedgerReport> {
                 [
                   Text(DateFormatFa.business(l.tx.effectiveDate)),
                   Text(l.tx.referenceNo, style: AppTypography.caption, textDirection: TextDirection.ltr),
-                  Text(l.tx.type.labelFa),
+                  TransactionTypeBadge(l.tx.type),
                   Text(l.tx.customerName ?? '—'),
                   l.debit == 0 ? const Text('') : AmountText(l.debit, c),
                   l.credit == 0 ? const Text('') : AmountText(l.credit, c),

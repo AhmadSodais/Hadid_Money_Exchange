@@ -54,9 +54,7 @@ final class PostingService {
         await _checkParties(txn, command);
         await _checkClosedDays(txn, plan.journal, command.effectiveDate);
         await _checkNegativeCash(txn, [(command.effectiveDate, plan.journal)]);
-        if (command is OpeningCashCommand || command is OpeningCustomerCommand) {
-          await _checkOpeningUnique(txn, command);
-        }
+        if (command is OpeningCustomerCommand) await _checkOpeningUnique(txn, command);
 
         final id = await _insertTransaction(txn, command, plan, actor);
         await _insertJournal(txn, id, command.effectiveDate, command.description,
@@ -269,9 +267,7 @@ final class PostingService {
             actor: actor,
             description: 'ویرایش ${_documentNo(original)}');
         // The original's opening row was deactivated by the reversal above.
-        if (replacement is OpeningCashCommand || replacement is OpeningCustomerCommand) {
-          await _checkOpeningUnique(txn, replacement);
-        }
+        if (replacement is OpeningCustomerCommand) await _checkOpeningUnique(txn, replacement);
         final id = await _insertTransaction(txn, replacement, plan, actor,
             documentNo: _documentNo(original));
         await _insertJournal(
@@ -483,9 +479,8 @@ final class PostingService {
       throw ValidationError(
           'date.tooOld',
           editing
-              ? 'این معامله بیش از $maxBack روز قبل ثبت شده و ویرایش یا حذف آن مجاز نیست '
-                  '(تنظیمات: حداکثر روزهای ثبت با تاریخ گذشته).'
-              : 'ثبت معامله با تاریخ بیش از $maxBack روز قبل مجاز نیست (تنظیمات).',
+              ? 'این معامله بیش از $maxBack روز قبل ثبت شده و ویرایش یا حذف آن مجاز نیست.'
+              : 'ثبت معامله با تاریخ بیش از $maxBack روز قبل مجاز نیست.',
           field: 'date');
     }
   }
@@ -605,19 +600,12 @@ final class PostingService {
     }
   }
 
-  Future<void> _checkOpeningUnique(Transaction txn, FinancialCommand c) async {
-    final List<Map<String, Object?>> rows;
-    if (c is OpeningCashCommand) {
-      rows = await txn.query('opening_balances',
-          where: "kind = 'cash' AND drawer_id = ? AND currency_code = ? AND is_active = 1",
-          whereArgs: [c.drawerId, c.currency]);
-    } else if (c is OpeningCustomerCommand) {
-      rows = await txn.query('opening_balances',
-          where: "kind = 'customer' AND customer_id = ? AND currency_code = ? AND is_active = 1",
-          whereArgs: [c.customerId, c.currency]);
-    } else {
-      return;
-    }
+  /// A customer has one opening balance per currency. Drawer capital is not
+  /// limited: later capital injections are further [OpeningCashCommand]s.
+  Future<void> _checkOpeningUnique(Transaction txn, OpeningCustomerCommand c) async {
+    final rows = await txn.query('opening_balances',
+        where: "kind = 'customer' AND customer_id = ? AND currency_code = ? AND is_active = 1",
+        whereArgs: [c.customerId, c.currency]);
     if (rows.isNotEmpty) {
       throw const BusinessRuleError('opening.duplicate',
           'بیلانس افتتاحیه برای این ارز قبلاً ثبت شده است. برای تغییر، آن را برگشت کنید یا اصلاح مجاز ثبت کنید.');

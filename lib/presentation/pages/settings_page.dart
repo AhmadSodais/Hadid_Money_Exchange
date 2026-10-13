@@ -9,6 +9,7 @@ import 'package:provider/provider.dart';
 
 import '../../application/audit_writer.dart';
 import '../../application/catalog_service.dart';
+import '../../application/ledger_queries.dart';
 import '../../application/posting_service.dart';
 import '../../application/read_models.dart';
 import '../../core/constants/app_constants.dart';
@@ -33,12 +34,13 @@ import '../widgets/exchange_ui.dart';
 import '../widgets/legacy_import_card.dart';
 import '../widgets/order_detail_info_card.dart';
 import '../widgets/settings_kit.dart';
+import '../widgets/transaction_actions.dart';
+import '../widgets/transaction_detail_dialog.dart';
 
 part 'settings_about_section.dart';
 
 enum _Section {
   exchangeInfo,
-  postingRules,
   openingCash,
   currencies,
   appLock,
@@ -73,9 +75,8 @@ class SettingsPage extends StatefulWidget {
 class _SettingsPageState extends State<SettingsPage> {
   static const _nav = <SettingsNavEntry<_Section>>[
     SettingsNavEntry(_Section.exchangeInfo, Icons.storefront_outlined, 'اطلاعات صرافی'),
-    SettingsNavEntry(_Section.postingRules, Icons.rule_outlined, 'قوانین ثبت اسناد'),
-    SettingsNavEntry(_Section.openingCash, Icons.account_balance_wallet_outlined, 'سرمایه اولیه صندوق'),
-    SettingsNavEntry(_Section.currencies, Icons.currency_exchange, 'ارزها و صندوق‌ها'),
+    SettingsNavEntry(_Section.openingCash, Icons.account_balance_wallet_outlined, 'سرمایه اولیه '),
+    SettingsNavEntry(_Section.currencies, Icons.currency_exchange, 'ارز و صندوق'),
     SettingsNavEntry(_Section.appLock, Icons.lock_outline, 'امنیت برنامه'),
     SettingsNavEntry(_Section.backup, Icons.folder_outlined, 'پشتیبان‌گیری و بازیابی'),
     SettingsNavEntry(_Section.data, Icons.table_view_outlined, 'مدیریت داده‌ها'),
@@ -98,7 +99,7 @@ class _SettingsPageState extends State<SettingsPage> {
 
   bool _visible(AppSession s, _Section section) => switch (section) {
         _ when _hiddenSections.contains(section) => false,
-        _Section.exchangeInfo || _Section.postingRules => s.can(Permissions.settingsManage),
+        _Section.exchangeInfo => s.can(Permissions.settingsManage),
         _Section.data => s.can(Permissions.backupCreate) || s.can(Permissions.backupRestore),
         _Section.openingCash => s.can(Permissions.openingBalancesPost),
         _Section.legacyImport => s.can(Permissions.openingBalancesPost) && s.can(Permissions.backupRestore),
@@ -130,7 +131,7 @@ class _SettingsPageState extends State<SettingsPage> {
 
     return PageScaffold(
       title: 'تنظیمات',
-      subtitle: 'اطلاعات صرافی، قوانین ثبت، ارزها و صندوق‌ها، امنیت، مدیریت داده‌ها و ظاهر برنامه',
+      subtitle: 'اطلاعات صرافی، سرمایه، ارز و صندوق، امنیت، مدیریت داده‌ها و ظاهر برنامه',
       searchController: _search,
       searchHint: 'جستجو در تنظیمات...',
       onSearch: _onSearch,
@@ -180,8 +181,7 @@ class _SettingsContent extends StatelessWidget {
     final s = context.watch<AppSession>();
     final sections = switch (selected) {
       _Section.exchangeInfo => [_ExchangeInfoCard(metrics: metrics)],
-      _Section.postingRules => [_PostingRulesCard(metrics: metrics)],
-      _Section.openingCash => [_OpeningCashCard(metrics: metrics)],
+      _Section.openingCash => [_CapitalSection(metrics: metrics)],
       _Section.currencies => [const _CurrenciesTable(), const _DrawersTable()],
       _Section.appLock => [AppLockSettingsCard(padding: metrics.cardPadding)],
       _Section.backup => [
@@ -370,144 +370,100 @@ class _ExchangeInfoCardState extends State<_ExchangeInfoCard> with RevisionReloa
   }
 }
 
-// ----------------------------------------------------------- posting rules
+// ----------------------------------------------------------------- capital
 
-class _PostingRulesCard extends StatefulWidget {
-  const _PostingRulesCard({required this.metrics});
+/// One active capital posting. The earliest per drawer and currency is the
+/// initial capital; every later one is a capital injection.
+class _CapitalEntry {
+  const _CapitalEntry(this.tx, {required this.initial});
+
+  final PostedTransaction tx;
+  final bool initial;
+
+  int get drawerId => tx.drawerId ?? 0;
+  String get currency => tx.sourceCurrency ?? '';
+  int get amountMinor => tx.sourceAmountMinor ?? 0;
+}
+
+class _CapitalTotal {
+  int initialMinor = 0;
+  int injectedMinor = 0;
+  int injections = 0;
+
+  int get totalMinor => initialMinor + injectedMinor;
+}
+
+enum _CapitalAction { details, edit, delete }
+
+/// Initial capital and later capital injections of every drawer: a form to
+/// add capital, the current capital per drawer and currency, and the list of
+/// capital documents with view, edit and delete.
+class _CapitalSection extends StatefulWidget {
+  const _CapitalSection({required this.metrics});
 
   final SettingsMetrics metrics;
 
   @override
-  State<_PostingRulesCard> createState() => _PostingRulesCardState();
+  State<_CapitalSection> createState() => _CapitalSectionState();
 }
 
-class _PostingRulesCardState extends State<_PostingRulesCard> with RevisionReload {
-  final _backdate = TextEditingController();
-  bool _allowNegative = false;
-  bool _lockReconciled = true;
-  bool _loaded = false;
-  bool _saving = false;
-
-  @override
-  void dispose() {
-    _backdate.dispose();
-    super.dispose();
-  }
-
-  @override
-  Future<void> reload() async {
-    final c = session.services.catalog;
-    final back = await c.setting('posting.max_backdate_days');
-    final neg = await c.setting('posting.allow_negative_cash');
-    final lock = await c.setting('posting.lock_reconciled_days');
-    if (!mounted) return;
-    setState(() {
-      _backdate.text = back ?? '31';
-      _allowNegative = neg == '1';
-      _lockReconciled = lock != '0';
-      _loaded = true;
-    });
-  }
-
-  Future<void> _save() async {
-    final days = int.tryParse(Decimal.normalizeDigits(_backdate.text.trim()));
-    if (days == null || days < 0 || days > 3650) {
-      GfToast.error(context, 'تعداد روزهای مجاز ثبت گذشته باید عددی بین ۰ و ۳۶۵۰ باشد.');
-      return;
-    }
-    final s = context.read<AppSession>();
-    final c = s.services.catalog;
-    setState(() => _saving = true);
-    await runAction(context, () async {
-      await c.putSetting('posting.max_backdate_days', '$days', s.actor);
-      await c.putSetting('posting.allow_negative_cash', _allowNegative ? '1' : '0', s.actor);
-      await c.putSetting('posting.lock_reconciled_days', _lockReconciled ? '1' : '0', s.actor);
-    }, success: 'تنظیمات ذخیره شد.');
-    if (mounted) setState(() => _saving = false);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final m = widget.metrics;
-    return SettingsSectionCard(
-      icon: Icons.rule_outlined,
-      title: 'قوانین ثبت اسناد',
-      padding: m.cardPadding,
-      footer: Text(
-        'این تنظیمات روی همه کاربران و همه صندوق‌ها اعمال می‌شود.',
-        style: AppTypography.caption.copyWith(color: AppColors.textSecondary),
-      ),
-      actions: [
-        GfSecondaryButton(label: 'انصراف', icon: Icons.close, onPressed: _saving ? null : reload),
-        GfPrimaryButton(
-          label: 'ذخیره تغییرات',
-          icon: Icons.save_outlined,
-          isLoading: _saving,
-          onPressed: _loaded && !_saving ? _save : null,
-        ),
-      ],
-      child: !_loaded
-          ? const SizedBox(height: 120, child: GfPageLoader())
-          : Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                GfTextField(
-                  label: 'حداکثر روزهای ثبت با تاریخ گذشته',
-                  hint: '۰ = بدون محدودیت',
-                  prefixIcon: Icons.history,
-                  controller: _backdate,
-                  keyboardType: TextInputType.number,
-                ),
-                SizedBox(height: m.fieldGap),
-                SettingsFormRow(
-                  gap: m.fieldGap,
-                  left: GfToggleCard(
-                    label: 'اجازه منفی شدن موجودی نقد صندوق',
-                    subtitle: 'پیش‌فرض خاموش: پرداخت بیش از موجودی صندوق رد می‌شود.',
-                    value: _allowNegative,
-                    onChanged: (v) => setState(() => _allowNegative = v),
-                  ),
-                  right: GfToggleCard(
-                    label: 'قفل روزهای بسته‌شده',
-                    subtitle: 'پس از بستن بیلانس، ثبت یا برگشت با آن تاریخ یا قبل از آن برای همان صندوق و ارز مجاز نیست.',
-                    value: _lockReconciled,
-                    onChanged: (v) => setState(() => _lockReconciled = v),
-                  ),
-                ),
-              ],
-            ),
-    );
-  }
-}
-
-// ------------------------------------------------------------ opening cash
-
-class _OpeningCashCard extends StatefulWidget {
-  const _OpeningCashCard({required this.metrics});
-
-  final SettingsMetrics metrics;
-
-  @override
-  State<_OpeningCashCard> createState() => _OpeningCashCardState();
-}
-
-class _OpeningCashCardState extends State<_OpeningCashCard> {
+class _CapitalSectionState extends State<_CapitalSection> with RevisionReload {
   final _amount = TextEditingController();
+  final _description = TextEditingController();
   int? _drawerId;
   Currency? _currency;
   BusinessDate _date = BusinessDate.today();
   String _key = PostingService.newIdempotencyKey();
   bool _saving = false;
+  bool _loading = true;
+
+  /// Newest first.
+  List<_CapitalEntry> _entries = const [];
 
   @override
   void dispose() {
     _amount.dispose();
+    _description.dispose();
     super.dispose();
   }
 
+  @override
+  Future<void> reload() async {
+    final rows = await session.services.queries.journal(
+      const JournalFilter(types: {TransactionType.openingCash}, activeOnly: true),
+      limit: 100000,
+      newestFirst: false,
+    );
+    final seen = <(int?, String?)>{};
+    final entries = [
+      for (final t in rows) _CapitalEntry(t, initial: seen.add((t.drawerId, t.sourceCurrency))),
+    ];
+    if (!mounted) return;
+    setState(() {
+      _entries = entries.reversed.toList();
+      _loading = false;
+    });
+  }
+
+  Map<(int, String), _CapitalTotal> get _totals {
+    final totals = <(int, String), _CapitalTotal>{};
+    for (final e in _entries) {
+      final t = totals.putIfAbsent((e.drawerId, e.currency), _CapitalTotal.new);
+      if (e.initial) {
+        t.initialMinor += e.amountMinor;
+      } else {
+        t.injectedMinor += e.amountMinor;
+        t.injections++;
+      }
+    }
+    return totals;
+  }
+
+  int? _selectedDrawer(AppSession s) => _drawerId ?? (s.activeDrawers.isEmpty ? null : s.activeDrawers.first.id);
+
   Future<void> _post() async {
     final s = context.read<AppSession>();
-    final drawer = _drawerId ?? (s.activeDrawers.isEmpty ? null : s.activeDrawers.first.id);
+    final drawer = _selectedDrawer(s);
     final c = _currency;
     if (drawer == null || c == null) {
       GfToast.error(context, 'صندوق و ارز را انتخاب کنید.');
@@ -518,6 +474,8 @@ class _OpeningCashCardState extends State<_OpeningCashCard> {
       GfToast.error(context, 'مبلغ معتبر نیست.');
       return;
     }
+    final kind = _totals.containsKey((drawer, c.code)) ? 'افزایش سرمایه' : 'سرمایه اولیه';
+    final note = _description.text.trim();
     setState(() => _saving = true);
     final posted = await runAction(
       context,
@@ -528,11 +486,11 @@ class _OpeningCashCardState extends State<_OpeningCashCard> {
           drawerId: drawer,
           currency: c.code,
           amountMinor: minor,
-          description: 'سرمایه اولیه ${c.nameFa}',
+          description: note.isEmpty ? '$kind ${c.nameFa}' : note,
         ),
         s.actor,
       ),
-      success: 'سرمایه اولیه ${c.nameFa} ثبت شد.',
+      success: '$kind ${MoneyFormat.withName(minor, c)} ثبت شد.',
     );
     if (!mounted) return;
     setState(() {
@@ -540,26 +498,63 @@ class _OpeningCashCardState extends State<_OpeningCashCard> {
       if (posted != null) {
         _key = PostingService.newIdempotencyKey();
         _amount.clear();
+        _description.clear();
       }
     });
+  }
+
+  Future<void> _run(_CapitalAction action, PostedTransaction t) async {
+    switch (action) {
+      case _CapitalAction.details:
+        await TransactionDetailDialog.show(context, t.id);
+      case _CapitalAction.edit:
+        await TransactionActions.edit(context, t);
+      case _CapitalAction.delete:
+        await TransactionActions.delete(context, t);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final s = context.watch<AppSession>();
     final m = widget.metrics;
+    final totals = _totals;
+    final drawerNames = {for (final d in s.drawers) d.id: d.nameFa};
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _form(s, m, totals, drawerNames),
+        SizedBox(height: m.gap),
+        _summaryTable(s, totals, drawerNames),
+        SizedBox(height: m.gap),
+        _historyTable(s),
+      ],
+    );
+  }
+
+  Widget _form(
+    AppSession s,
+    SettingsMetrics m,
+    Map<(int, String), _CapitalTotal> totals,
+    Map<int, String> drawerNames,
+  ) {
+    final drawer = _selectedDrawer(s);
+    final c = _currency;
+    final current = drawer == null || c == null ? null : totals[(drawer, c.code)];
+    final injecting = current != null;
     return SettingsSectionCard(
       icon: Icons.account_balance_wallet_outlined,
-      title: 'سرمایه اولیه صندوق',
+      title: 'ثبت سرمایه صندوق',
       padding: m.cardPadding,
       footer: const SettingsFooterNote(
-        'سرمایه اولیه هر ارز برای هر صندوق فقط یک بار ثبت می‌شود و پس از آن موجودی فقط از معاملات محاسبه می‌شود. '
-        'برای اصلاح، سند سرمایه اولیه را از روزنامچه ویرایش یا حذف کنید.',
+        'اولین سرمایه هر ارز در هر صندوق «سرمایه اولیه» و هر مبلغ بعدی «افزایش سرمایه» است و به موجودی صندوق اضافه می‌شود. '
+        'برای مشاهده، ویرایش یا حذف، از منوی ⋮ هر ردیف در «سوابق سرمایه» استفاده کنید؛ سابقه برای ممیزی حفظ می‌شود.',
+        warning: false,
       ),
       actions: [
         GfPrimaryButton(
-          label: 'ثبت سرمایه اولیه',
-          icon: Icons.account_balance_wallet_outlined,
+          label: injecting ? 'افزودن سرمایه' : 'ثبت سرمایه اولیه',
+          icon: injecting ? Icons.add_card_outlined : Icons.account_balance_wallet_outlined,
           isLoading: _saving,
           onPressed: _saving ? null : _post,
         ),
@@ -569,10 +564,7 @@ class _OpeningCashCardState extends State<_OpeningCashCard> {
         children: [
           SettingsFormRow(
             gap: m.fieldGap,
-            left: DrawerPicker(
-              value: _drawerId ?? (s.activeDrawers.isEmpty ? null : s.activeDrawers.first.id),
-              onChanged: (id) => setState(() => _drawerId = id),
-            ),
+            left: DrawerPicker(value: drawer, onChanged: (id) => setState(() => _drawerId = id)),
             right: CurrencyPicker(value: _currency, onChanged: (c) => setState(() => _currency = c)),
           ),
           SizedBox(height: m.fieldGap),
@@ -581,8 +573,120 @@ class _OpeningCashCardState extends State<_OpeningCashCard> {
             left: AmountField(controller: _amount, label: 'مبلغ ${_currency?.nameFa ?? ''}'),
             right: BusinessDateField(value: _date, onChanged: (d) => setState(() => _date = d)),
           ),
+          SizedBox(height: m.fieldGap),
+          GfTextField(
+            label: 'شرح (اختیاری)',
+            hint: injecting ? 'مثلاً افزایش سرمایه توسط شریک' : 'مثلاً سرمایه شروع کار صرافی',
+            prefixIcon: Icons.notes_outlined,
+            controller: _description,
+          ),
+          if (drawer != null && c != null) ...[
+            SizedBox(height: m.fieldGap),
+            InfoBanner(
+              injecting
+                  ? 'سرمایه فعلی «${drawerNames[drawer] ?? ''}» در ${c.nameFa}: '
+                      '${MoneyFormat.withName(current.totalMinor, c)} '
+                      '(سرمایه اولیه ${MoneyFormat.withName(current.initialMinor, c)}'
+                      '${current.injections > 0 ? '، ${current.injections} بار افزایش' : ''}). '
+                      'مبلغ جدید به‌عنوان افزایش سرمایه به آن اضافه می‌شود.'
+                  : 'برای «${drawerNames[drawer] ?? ''}» در ${c.nameFa} هنوز سرمایه‌ای ثبت نشده؛ '
+                      'این مبلغ به‌عنوان سرمایه اولیه ثبت می‌شود.',
+              tone: injecting ? BannerTone.success : BannerTone.info,
+            ),
+          ],
         ],
       ),
+    );
+  }
+
+  Widget _summaryTable(AppSession s, Map<(int, String), _CapitalTotal> totals, Map<int, String> drawerNames) {
+    final keys = totals.keys.toList()
+      ..sort((a, b) {
+        final byDrawer = a.$1.compareTo(b.$1);
+        if (byDrawer != 0) return byDrawer;
+        return (s.currency(a.$2)?.sortOrder ?? 99).compareTo(s.currency(b.$2)?.sortOrder ?? 99);
+      });
+    return LedgerTable(
+      shrinkWrap: true,
+      title: 'سرمایه فعلی',
+      subtitle: 'مجموع سرمایه اولیه و افزایش‌های سرمایه هر صندوق به تفکیک ارز.',
+      itemLabel: 'ردیف',
+      minWidth: 760,
+      showRowNumbers: false,
+      isLoading: _loading,
+      emptyText: 'هنوز سرمایه‌ای ثبت نشده است.',
+      columns: const [
+        LedgerColumn.primary('صندوق'),
+        LedgerColumn.text('ارز'),
+        LedgerColumn.amount('سرمایه اولیه'),
+        LedgerColumn.amount('افزایش سرمایه'),
+        LedgerColumn.amount('مجموع سرمایه'),
+      ],
+      rows: [
+        for (final k in keys)
+          () {
+            final t = totals[k]!;
+            final c = s.currency(k.$2);
+            return [
+              Text(drawerNames[k.$1] ?? '—', style: AppTypography.bodyMedium),
+              Text(c?.nameFa ?? k.$2, style: AppTypography.body),
+              AmountText(t.initialMinor, c),
+              AmountText(t.injectedMinor, c),
+              AmountText(t.totalMinor, c, bold: true),
+            ];
+          }(),
+      ],
+    );
+  }
+
+  Widget _historyTable(AppSession s) {
+    return LedgerTable(
+      shrinkWrap: true,
+      fixedRows: 10,
+      title: 'سوابق سرمایه',
+      titleCount: _entries.length,
+      subtitle: 'برای جزئیات روی ردیف کلیک کنید؛ ویرایش و حذف از منوی ⋮ انتهای ردیف.',
+      itemLabel: 'سند',
+      minWidth: 720,
+      isLoading: _loading,
+      emptyText: 'هنوز سرمایه‌ای ثبت نشده است.',
+      columns: const [
+        LedgerColumn('تاریخ'),
+        LedgerColumn('نوع'),
+        LedgerColumn('شرح'),
+        LedgerColumn('مبلغ', numeric: true),
+        LedgerColumn.actions(),
+      ],
+      rows: [
+        for (final e in _entries)
+          [
+            Text(DateFormatFa.business(e.tx.effectiveDate), style: AppTypography.body),
+            Align(
+              alignment: AlignmentDirectional.centerStart,
+              child: GfStatusBadge(
+                label: e.initial ? 'سرمایه اولیه' : 'افزایش سرمایه',
+                color: e.initial ? AppColors.primary : AppColors.success,
+                compact: true,
+              ),
+            ),
+            Tooltip(
+              message: e.tx.description ?? '',
+              child: Text(e.tx.description ?? '—', style: AppTypography.body),
+            ),
+            AmountText(e.amountMinor, s.currency(e.currency), showName: true),
+            LedgerRowMenu(
+              onSelected: (v) => _run(_CapitalAction.values.byName(v), e.tx),
+              items: [
+                gfPopupMenuItem(value: _CapitalAction.details.name, label: 'مشاهده جزئیات'),
+                if (TransactionActions.canEdit(e.tx, s))
+                  gfPopupMenuItem(value: _CapitalAction.edit.name, label: 'ویرایش'),
+                if (TransactionActions.canDelete(e.tx, s))
+                  gfPopupMenuItem(value: _CapitalAction.delete.name, label: 'حذف', danger: true),
+              ],
+            ),
+          ],
+      ],
+      onTapRow: (i) => TransactionDetailDialog.show(context, _entries[i].tx.id),
     );
   }
 }
@@ -851,7 +955,7 @@ class _DrawerDialogState extends State<_DrawerDialog> {
           if (existing == null) ...[
             const SizedBox(height: 14),
             const DialogInfoBanner(
-              message: 'پس از ساخت، سرمایه اولیه هر ارز این صندوق را از بخش «سرمایه اولیه صندوق» ثبت کنید.',
+              message: 'پس از ساخت، سرمایه اولیه هر ارز این صندوق را از بخش «سرمایه اولیه و افزایش سرمایه» ثبت کنید.',
               tone: DialogBannerTone.info,
             ),
           ],

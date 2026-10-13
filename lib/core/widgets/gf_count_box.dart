@@ -104,7 +104,6 @@ class GfCountBadge extends StatelessWidget {
         style: AppTypography.bodySemiBold.copyWith(
           color: AppColors.primary,
           fontSize: 14,
-          fontWeight: FontWeight.w700,
           height: 1.3,
         ),
       ),

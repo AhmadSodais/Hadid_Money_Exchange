@@ -18,7 +18,7 @@ Every rule the system enforces that the master prompt did not fix exactly is lis
 | B10 | Reconciliation difference | Stored only. Corrected by an explicit cash adjustment to 5200 with a reason | – |
 | B11 | Reversal | Whole transaction, once, with a reason, dated today by default; the original keeps its date and is marked `reversed` | – |
 | B12 | Opening balances | One active opening per drawer+currency and per customer+currency. To change it, edit or delete it from the journal (both post a reversal; history is kept) | – |
-| B14 | Cash drawers (صندوق‌ها) | Settings → «ارزها و صندوق‌ها». Each new drawer gets its own cash account under 1100 (`1102`, `1103`, …) and keeps separate cash, opening capital, and daily reconciliation per currency. Names are unique. A drawer can be renamed at any time; it can be deactivated only when its cash is zero in every currency, and at least one drawer must stay active. Inactive drawers disappear from the drawer pickers and reject postings | Settings |
+| B14 | Cash drawers (صندوق‌ها) | Settings → «ارز و صندوق». Each new drawer gets its own cash account under 1100 (`1102`, `1103`, …) and keeps separate cash, opening capital, and daily reconciliation per currency. Names are unique. A drawer can be renamed at any time; it can be deactivated only when its cash is zero in every currency, and at least one drawer must stay active. Inactive drawers disappear from the drawer pickers and reject postings | Settings |
 | B13 | Deleting | Nothing financial is deleted. Customers are deactivated (or anonymized); currencies are deactivated | – |
 
 ## Security and access
@@ -66,4 +66,4 @@ Every rule the system enforces that the master prompt did not fix exactly is lis
 | Q3 | Will staff log in with their own accounts? If yes, which role does each person get? | Single owner plus app lock |
 | Q4 | Is a licensing scheme required, and how should it work offline? | None; data is never blocked |
 | Q5 | For customers flagged `customer.exchangeOnAccount`, should their balances be corrected after migration? | Corrected only by an explicit customer adjustment with a reason |
-| Q6 | Is more than one cash drawer needed? | Answered: drawers are managed in Settings → «ارزها و صندوق‌ها» (see B14) |
+| Q6 | Is more than one cash drawer needed? | Answered: drawers are managed in Settings → «ارز و صندوق» (see B14) |

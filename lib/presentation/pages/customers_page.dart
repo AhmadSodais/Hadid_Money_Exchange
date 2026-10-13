@@ -28,6 +28,7 @@ class _CustomersPageState extends State<CustomersPage> with RevisionReload {
   bool _includeInactive = false;
   bool _loading = true;
   List<CustomerRecord> _customers = const [];
+  // ignore: unused_field
   Map<int, Map<String, int>> _positions = const {};
 
   @override
@@ -148,7 +149,7 @@ class _CustomersPageState extends State<CustomersPage> with RevisionReload {
                 LedgerColumn.code(),
                 LedgerColumn.primary('نام'),
                 LedgerColumn.text('شماره تماس'),
-                LedgerColumn.description('حساب‌ها'),
+                // LedgerColumn.description('حساب‌ها'),
                 LedgerColumn.status(),
                 LedgerColumn.actions(),
               ],
@@ -158,7 +159,7 @@ class _CustomersPageState extends State<CustomersPage> with RevisionReload {
                     Text(c.code, style: AppTypography.caption),
                     Text(c.name, style: AppTypography.bodyMedium),
                     Text(c.phone ?? '—', textDirection: TextDirection.ltr, style: AppTypography.body),
-                    _PositionsCell(positions: _positions[c.id] ?? const {}, session: s),
+                    // _PositionsCell(positions: _positions[c.id] ?? const {}, session: s),
                     Text(
                       c.isWalkIn
                           ? 'متفرقه'
@@ -193,6 +194,7 @@ class _CustomersPageState extends State<CustomersPage> with RevisionReload {
   }
 }
 
+// ignore: unused_element
 class _PositionsCell extends StatelessWidget {
   const _PositionsCell({required this.positions, required this.session});
 

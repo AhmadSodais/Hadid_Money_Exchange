@@ -90,26 +90,48 @@ class _DashboardPageState extends State<DashboardPage> with RevisionReload {
                   ),
                 LayoutBuilder(builder: (context, constraints) {
                   final w = constraints.maxWidth;
-                  final columns = w >= 1200 ? 4 : (w >= 860 ? 3 : (w >= 520 ? 2 : 1));
+                  final cards = [
+                    for (final c in session.activeCurrencies)
+                      _CurrencyCard(
+                        currency: c,
+                        cash: _cash[c.code] ?? 0,
+                        owedToCustomers: _customers[c.code]?.liabilities ?? 0,
+                        owedByCustomers: _customers[c.code]?.receivables ?? 0,
+                      ),
+                  ];
+                  if (cards.isEmpty) return const SizedBox.shrink();
+                  final maxColumns = w >= 1200 ? 4 : (w >= 860 ? 3 : (w >= 520 ? 2 : 1));
+                  // Spread the cards evenly over the rows and let every row
+                  // fill the width, so no row ends in an empty gap.
+                  final rowCount = (cards.length / maxColumns).ceil();
+                  final perRow = (cards.length / rowCount).ceil();
                   const gap = AppSpacing.md;
-                  final cardWidth = (w - gap * (columns - 1)) / columns;
-                  return Wrap(
-                    spacing: gap,
-                    runSpacing: gap,
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      for (final c in session.activeCurrencies)
-                        SizedBox(
-                          width: cardWidth,
-                          child: _CurrencyCard(
-                            currency: c,
-                            cash: _cash[c.code] ?? 0,
-                            owedToCustomers: _customers[c.code]?.liabilities ?? 0,
-                            owedByCustomers: _customers[c.code]?.receivables ?? 0,
+                      for (var start = 0; start < cards.length; start += perRow) ...[
+                        if (start > 0) const SizedBox(height: gap),
+                        IntrinsicHeight(
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              for (var i = start; i < start + perRow && i < cards.length; i++) ...[
+                                if (i > start) const SizedBox(width: gap),
+                                Expanded(child: cards[i]),
+                              ],
+                            ],
                           ),
                         ),
+                      ],
                     ],
                   );
                 }),
+                const SizedBox(height: AppSpacing.sm),
+                Text(
+                  'موجودی کل صندوق: نقد همه صندوق‌ها با هم. '
+                  'سرمایه خود صرافی = موجودی کل صندوق - طلب مشتریان + بدهی مشتریان.',
+                  style: AppTypography.caption.copyWith(color: AppColors.textSecondary),
+                ),
                 const SizedBox(height: AppSpacing.md),
                 LayoutBuilder(builder: (context, constraints) {
                   final wide = constraints.maxWidth > 900;
@@ -149,12 +171,19 @@ class _CurrencyCard extends StatelessWidget {
   });
 
   final Currency currency;
+
+  /// Cash of every drawer together.
   final int cash;
   final int owedToCustomers;
   final int owedByCustomers;
 
+  /// What belongs to the exchange itself: the cash it holds, less what it
+  /// owes customers, plus what customers owe it.
+  int get ownCapital => cash - owedToCustomers + owedByCustomers;
+
   @override
   Widget build(BuildContext context) {
+    final own = ownCapital;
     return GfKpiCard(
       title: '${currency.nameFa} (${currency.code})',
       icon: AppAssets.currenciesFilled,
@@ -163,8 +192,9 @@ class _CurrencyCard extends StatelessWidget {
       currencies: [
         GfKpiCurrencyLine(
           amountText: MoneyFormat.amount(cash, currency),
-          currencyLabel: 'نقد صندوق',
+          currencyLabel: 'موجودی کل صندوق',
           color: cash < 0 ? AppColors.error : null,
+          emphasized: true,
         ),
         GfKpiCurrencyLine(
           amountText: MoneyFormat.amount(owedToCustomers, currency),
@@ -173,6 +203,12 @@ class _CurrencyCard extends StatelessWidget {
         GfKpiCurrencyLine(
           amountText: MoneyFormat.amount(owedByCustomers, currency),
           currencyLabel: 'بدهی مشتریان',
+        ),
+        GfKpiCurrencyLine(
+          amountText: MoneyFormat.amount(own, currency),
+          currencyLabel: 'سرمایه خود صرافی',
+          color: own < 0 ? AppColors.error : AppColors.success,
+          emphasized: true,
         ),
       ],
     );

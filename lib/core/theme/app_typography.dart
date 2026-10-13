@@ -130,9 +130,11 @@ abstract final class AppTypography {
         height: 1.35,
       );
 
+  /// Kept at w600: the Persian family's w700+ files draw Persian digits, while
+  /// every lighter weight draws English digits.
   static TextStyle get kpiValue => _style(
         fontSize: 26,
-        fontWeight: FontWeight.w700,
+        fontWeight: FontWeight.w600,
         color: AppColors.textPrimary,
         height: 1.15,
       );

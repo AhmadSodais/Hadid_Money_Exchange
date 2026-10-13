@@ -238,7 +238,7 @@ class _JournalPageState extends State<JournalPage> with RevisionReload {
                   [
                     Text(DateFormatFa.business(t.effectiveDate), style: AppTypography.body),
                     Text(t.referenceNo, style: AppTypography.caption, textDirection: TextDirection.ltr),
-                    Text(t.type.labelFa, style: AppTypography.bodyMedium),
+                    TransactionTypeBadge(t.type),
                     Text(t.customerName ?? '—', style: AppTypography.body),
                     Text(
                       _details(t, s),

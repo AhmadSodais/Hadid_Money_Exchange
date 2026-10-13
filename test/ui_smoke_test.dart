@@ -214,7 +214,8 @@ void main() {
         final tiles = find.byType(SettingsNavTile);
         expect(tiles, findsWidgets);
         final labels = [for (final e in tiles.evaluate()) (e.widget as SettingsNavTile).label];
-        expect(labels, containsAll(['اطلاعات صرافی', 'قوانین ثبت اسناد', 'مدیریت داده‌ها', 'درباره برنامه']));
+        expect(labels, containsAll(['اطلاعات صرافی', 'مدیریت داده‌ها', 'درباره برنامه']));
+        expect(labels, isNot(contains('قوانین ثبت اسناد')));
         expect(labels, isNot(contains('ورودی و خروجی اکسل')));
         expect(labels, isNot(contains('انتقال از برنامه قبلی')));
         expect(labels, isNot(contains('سوابق ممیزی و صحت دفاتر')));
@@ -234,11 +235,7 @@ void main() {
             }
             expect(find.text('اجازه منفی شدن موجودی نقد صندوق'), findsNothing);
           }
-          if (label == 'قوانین ثبت اسناد') {
-            expect(find.text('اجازه منفی شدن موجودی نقد صندوق'), findsOneWidget);
-            expect(find.text('قفل روزهای بسته‌شده'), findsOneWidget);
-          }
-          if (label == 'ارزها و صندوق‌ها') {
+          if (label == 'ارز و صندوق') {
             expect(find.text('ارز جدید'), findsOneWidget);
             expect(find.text('صندوق جدید'), findsOneWidget);
             expect(find.text('صندوق اصلی'), findsWidgets);

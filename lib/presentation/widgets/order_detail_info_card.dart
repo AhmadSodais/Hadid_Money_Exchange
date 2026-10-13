@@ -359,7 +359,7 @@ class OrderDetailSummaryRow extends StatelessWidget {
                         : (mutedValue
                             ? OrderDetailDialogStyle.muted
                             : OrderDetailDialogStyle.navy)),
-                fontWeight: highlight ? FontWeight.w700 : FontWeight.w500,
+                fontWeight: highlight ? FontWeight.w600 : FontWeight.w500,
                 fontSize: highlight ? (dense ? 13 : 14) : (dense ? 12 : 13),
               ),
             ),
@@ -479,7 +479,7 @@ class OrderDetailStatPanel extends StatelessWidget {
           overflow: TextOverflow.ellipsis,
           style: AppTypography.bodyMedium.copyWith(
             color: valueColor,
-            fontWeight: FontWeight.w700,
+            fontWeight: FontWeight.w600,
             fontSize: emphasize ? 15 : 13,
           ),
         ),

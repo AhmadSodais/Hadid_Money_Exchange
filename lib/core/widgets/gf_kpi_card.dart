@@ -17,11 +17,15 @@ class GfKpiCurrencyLine {
     required this.amountText,
     required this.currencyLabel,
     this.color,
+    this.emphasized = false,
   });
 
   final String amountText;
   final String currencyLabel;
   final Color? color;
+
+  /// Larger amount on a tinted band, for the figures read first.
+  final bool emphasized;
 }
 
 /// KPI metric card with optional trend, sparkline, and icon.
@@ -67,11 +71,9 @@ class GfKpiCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final multi = currencies != null;
     final card = Container(
-      padding: const EdgeInsets.symmetric(
-        horizontal: AppSpacing.sm,
-        vertical: AppSpacing.sm,
-      ),
+      padding: EdgeInsets.all(multi ? AppSpacing.md : AppSpacing.sm),
       decoration: BoxDecoration(
         color: Color.alphaBlend(_surfaceTint, AppColors.card),
         borderRadius: AppRadius.card,
@@ -90,7 +92,9 @@ class GfKpiCard extends StatelessWidget {
               Expanded(
                 child: Text(
                   title,
-                  style: AppTypography.label.copyWith(fontSize: 11),
+                  style: multi
+                      ? AppTypography.bodySemiBold.copyWith(fontSize: 16)
+                      : AppTypography.label.copyWith(fontSize: 11),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -98,8 +102,8 @@ class GfKpiCard extends StatelessWidget {
               if (icon != null) ...[
                 const SizedBox(width: 4),
                 SizedBox(
-                  width: 32,
-                  height: 32,
+                  width: multi ? 36 : 32,
+                  height: multi ? 36 : 32,
                   child: DecoratedBox(
                     decoration: BoxDecoration(
                       color: _accent.withValues(alpha: 0.12),
@@ -119,7 +123,7 @@ class GfKpiCard extends StatelessWidget {
               ],
             ],
           ),
-          const SizedBox(height: AppSpacing.xs),
+          SizedBox(height: multi ? AppSpacing.sm : AppSpacing.xs),
           if (currencies != null)
             _CurrencyValueBlock(lines: currencies!, accent: _accent)
           else
@@ -181,6 +185,57 @@ class _CurrencyValueBlock extends StatelessWidget {
   final List<GfKpiCurrencyLine> lines;
   final Color accent;
 
+  Widget _row(GfKpiCurrencyLine line) {
+    final strong = line.emphasized;
+    final tint = line.color ?? accent;
+    final row = Row(
+      children: [
+        Text(
+          line.currencyLabel,
+          style: AppTypography.label.copyWith(
+            fontSize: 13.5,
+            fontWeight: strong ? FontWeight.w600 : FontWeight.w500,
+            color: strong ? AppColors.textPrimary : AppColors.textSecondary,
+          ),
+          maxLines: 1,
+        ),
+        const SizedBox(width: AppSpacing.sm),
+        // Amounts shrink to fit instead of being cut off.
+        Expanded(
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: AlignmentDirectional.centerEnd,
+            child: Text(
+              line.amountText,
+              style: AppTypography.kpiValue.copyWith(
+                fontSize: strong ? 21 : 17,
+                color: line.color ?? AppColors.textPrimary,
+                fontFeatures: const [FontFeature.tabularFigures()],
+              ),
+              maxLines: 1,
+              textDirection: TextDirection.ltr,
+            ),
+          ),
+        ),
+      ],
+    );
+    if (!strong) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+        child: row,
+      );
+    }
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+      decoration: BoxDecoration(
+        color: tint.withValues(alpha: 0.08),
+        borderRadius: AppRadius.input,
+        border: Border.all(color: tint.withValues(alpha: 0.22)),
+      ),
+      child: row,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final rows = lines;
@@ -189,51 +244,16 @@ class _CurrencyValueBlock extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         for (var i = 0; i < rows.length; i++) ...[
-          if (i > 0) ...[
-            const SizedBox(height: 6),
-            Divider(
-              height: 1,
-              thickness: 1,
-              color: AppColors.border.withValues(alpha: 0.7),
-            ),
-            const SizedBox(height: 6),
-          ],
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.baseline,
-            textBaseline: TextBaseline.alphabetic,
-            children: [
-              Expanded(
-                child: Text(
-                  rows[i].amountText,
-                  style: AppTypography.kpiValue
-                      .copyWith(fontSize: 18, color: rows[i].color),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  textDirection: TextDirection.ltr,
-                  textAlign: TextAlign.end,
-                ),
-              ),
-              const SizedBox(width: 8),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                decoration: BoxDecoration(
-                  color: accent.withValues(alpha: 0.10),
-                  borderRadius: AppRadius.pill,
-                  border: Border.all(
-                    color: accent.withValues(alpha: 0.22),
-                  ),
-                ),
-                child: Text(
-                  rows[i].currencyLabel,
-                  style: AppTypography.caption.copyWith(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                    color: accent,
-                  ),
-                ),
-              ),
-            ],
-          ),
+          if (i > 0)
+            if (!rows[i].emphasized && !rows[i - 1].emphasized)
+              Divider(
+                height: 1,
+                thickness: 1,
+                color: AppColors.border.withValues(alpha: 0.7),
+              )
+            else
+              const SizedBox(height: 6),
+          _row(rows[i]),
         ],
       ],
     );

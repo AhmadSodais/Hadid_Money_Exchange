@@ -247,7 +247,7 @@ class _TransactionDetailDialogState extends State<TransactionDetailDialog> {
       case TransactionType.customerAdjustment:
         return [source(up ? 'اصلاح حساب — افزایش طلب مشتری' : 'اصلاح حساب — افزایش بدهی مشتری', incoming: up)];
       case TransactionType.openingCash:
-        return [source('سرمایه اولیه صندوق', incoming: true)];
+        return [source('سرمایه واریزشده به صندوق', incoming: true)];
       case TransactionType.cashAdjustment:
         return [source(up ? 'اصلاح صندوق — افزایش موجودی' : 'اصلاح صندوق — کاهش موجودی', incoming: up)];
       case TransactionType.expense:

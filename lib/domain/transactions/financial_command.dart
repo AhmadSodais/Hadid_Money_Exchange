@@ -19,8 +19,9 @@ enum TransactionType {
   /// فروش — the exchange sells a currency to a customer.
   sell('SEL', 'فروش'),
 
-  /// Initial cash capital of a drawer in one currency (posted once).
-  openingCash('OPC', 'سرمایه اولیه'),
+  /// Cash capital put into a drawer in one currency: the initial capital and
+  /// any later capital injection.
+  openingCash('OPC', 'سرمایه صندوق'),
 
   /// Opening balance of a customer in one currency (posted once).
   openingCustomer('OPA', 'بیلانس افتتاحیه'),
@@ -174,7 +175,9 @@ final class ExchangeCommand extends FinancialCommand {
       direction == ExchangeDirection.buy ? TransactionType.buy : TransactionType.sell;
 }
 
-/// Initial capital of a drawer in one currency.
+/// Capital put into a drawer in one currency: Dr Cash / Cr capital equity.
+/// The first one per drawer and currency is the initial capital; later ones
+/// are capital injections.
 final class OpeningCashCommand extends FinancialCommand {
   const OpeningCashCommand({
     required super.idempotencyKey,

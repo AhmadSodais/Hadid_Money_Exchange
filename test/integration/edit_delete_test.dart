@@ -189,7 +189,7 @@ void main() {
       expect(await h.app.queries.integrityProblems(), isEmpty);
     });
 
-    test('opening cash can be edited (the one-per-currency rule still holds)', () async {
+    test('opening cash can be edited and more capital added afterwards', () async {
       final opening = (await h.app.queries.journal(
               const JournalFilter(types: {TransactionType.openingCash}, currency: 'AFN')))
           .single;
@@ -202,8 +202,8 @@ void main() {
               currency: 'AFN',
               amountMinor: afn(1500)));
       expect(await h.app.queries.cashBalance('AFN'), afn(1500));
-      await expectLater(h.openingCash('AFN', afn(1)),
-          throwsA(isA<BusinessRuleError>().having((e) => e.code, 'code', 'opening.duplicate')));
+      await h.openingCash('AFN', afn(500), date: '2026-10-03');
+      expect(await h.app.queries.cashBalance('AFN'), afn(2000));
     });
 
     test('resubmitting the same edit does not edit twice', () async {

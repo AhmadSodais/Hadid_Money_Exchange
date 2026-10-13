@@ -93,10 +93,21 @@ void main() {
       expect(await h.count('transactions'), 1);
     });
 
-    test('opening capital can be posted only once per drawer and currency', () async {
-      await h.openingCash('AFN', afn(100000));
-      await expectLater(h.openingCash('AFN', afn(5)),
-          throwsA(isA<BusinessRuleError>().having((e) => e.code, 'code', 'opening.duplicate')));
+    test('capital can be added to a drawer after its initial capital', () async {
+      await h.openingCash('AFN', afn(100000), date: '2026-10-01');
+      await h.openingCash('AFN', afn(50000), date: '2026-10-05');
+      expect(await h.app.queries.cashBalance('AFN'), afn(150000));
+      final capital = await h.app.queries.journal(
+          const JournalFilter(types: {TransactionType.openingCash}, activeOnly: true));
+      expect(capital, hasLength(2));
+      expect(await h.app.queries.integrityProblems(), isEmpty);
+    });
+
+    test('deleting a capital injection keeps the initial capital', () async {
+      await h.openingCash('AFN', afn(100000), date: '2026-10-01');
+      final injection = await h.openingCash('AFN', afn(50000), date: '2026-10-05');
+      await h.app.posting.delete(
+          transactionId: injection.id, reason: 'اشتباه', actor: h.owner, idempotencyKey: h.key());
       expect(await h.app.queries.cashBalance('AFN'), afn(100000));
     });
 
