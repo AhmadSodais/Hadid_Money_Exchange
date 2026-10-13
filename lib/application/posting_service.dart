@@ -162,7 +162,7 @@ final class PostingService {
             reason: reason.trim(),
             idempotencyKey: idempotencyKey,
             actor: actor,
-            description: '$label ${original['reference_no']}');
+            description: '$label ${_documentNo(original)}');
         await AuditWriter.write(txn,
             actor: actor,
             action: 'transaction.reverse',
@@ -267,12 +267,13 @@ final class PostingService {
             reason: reason.trim(),
             idempotencyKey: Ids.editReversalKey(replacement.idempotencyKey),
             actor: actor,
-            description: 'ویرایش ${original['reference_no']}');
+            description: 'ویرایش ${_documentNo(original)}');
         // The original's opening row was deactivated by the reversal above.
         if (replacement is OpeningCashCommand || replacement is OpeningCustomerCommand) {
           await _checkOpeningUnique(txn, replacement);
         }
-        final id = await _insertTransaction(txn, replacement, plan, actor);
+        final id = await _insertTransaction(txn, replacement, plan, actor,
+            documentNo: _documentNo(original));
         await _insertJournal(
             txn, id, replacement.effectiveDate, replacement.description, plan.journal);
         await _afterInsert(txn, id, replacement);
@@ -294,7 +295,7 @@ final class PostingService {
             before: {
               'type': originalType.name,
               'date': originalDate.iso,
-              'reference': original['reference_no'],
+              'reference': _documentNo(original),
             },
             after: {
               'type': replacement.type.name,
@@ -375,9 +376,11 @@ final class PostingService {
     final originalId = original['id'] as int;
     final now = _clock().toUtc().toIso8601String();
     final type = TransactionType.reversal;
+    final reference = await _nextReference(txn, type);
     final id = await txn.insert('transactions', {
       'uuid': Ids.key(),
-      'reference_no': await _nextReference(txn, type),
+      'reference_no': reference,
+      'document_no': reference,
       'type': type.name,
       'status': TransactionStatus.posted.name,
       'customer_id': original['customer_id'],
@@ -621,12 +624,17 @@ final class PostingService {
     }
   }
 
+  /// [documentNo]: the number to show for the row; an edit passes the
+  /// original's so the deal keeps its number. Defaults to the new reference.
   Future<int> _insertTransaction(
-      Transaction txn, FinancialCommand c, PostingPlan plan, Actor actor) async {
+      Transaction txn, FinancialCommand c, PostingPlan plan, Actor actor,
+      {String? documentNo}) async {
     final now = _clock().toUtc().toIso8601String();
+    final reference = await _nextReference(txn, c.type);
     final row = <String, Object?>{
       'uuid': Ids.key(),
-      'reference_no': await _nextReference(txn, c.type),
+      'reference_no': reference,
+      'document_no': documentNo ?? reference,
       'type': c.type.name,
       'status': TransactionStatus.posted.name,
       'effective_date': c.effectiveDate.iso,
@@ -786,6 +794,9 @@ final class PostingService {
     final rows = await txn.query('sequences', where: 'name = ?', whereArgs: [name]);
     return Ids.reference(type, rows.first['value'] as int);
   }
+
+  static String _documentNo(Map<String, Object?> row) =>
+      (row['document_no'] ?? row['reference_no']) as String;
 
   static int? _drawerOf(FinancialCommand c) => switch (c) {
         ReceiptCommand x => x.drawerId,

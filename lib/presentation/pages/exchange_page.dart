@@ -699,7 +699,7 @@ class _ExchangePageState extends State<ExchangePage> with RevisionReload {
 
     return PageScaffold(
       title: 'خرید و فروش ارز',
-      subtitle: 'معامله ارز با مشتری؛ هر معامله با همه بخش‌هایش یک سند تراز ثبت می‌شود.',
+      subtitle: 'خرید یا فروش ارز با مشتری؛ ارز، مبلغ و نرخ را وارد کنید و معامله را ثبت کنید.',
       body: WorkbenchLayout(
         main: (m) => [
           WorkbenchModeSelector<ExchangeDirection>(

@@ -30,7 +30,7 @@ class GfMenuFilter<T> extends StatefulWidget {
     required this.onChanged,
     this.icon = Icons.filter_alt_outlined,
     this.width = 200,
-    this.panelWidth = 280,
+    this.panelWidth = 300,
   });
 
   final T value;

@@ -50,7 +50,7 @@ final class PostedTransaction {
       PostedTransaction(
         id: r['id'] as int,
         uuid: r['uuid'] as String,
-        referenceNo: r['reference_no'] as String,
+        referenceNo: (r['document_no'] ?? r['reference_no']) as String,
         type: TransactionType.parse(r['type'] as String),
         status: TransactionStatus.parse(r['status'] as String),
         effectiveDate: BusinessDate.parse(r['effective_date'] as String),
@@ -82,6 +82,9 @@ final class PostedTransaction {
 
   final int id;
   final String uuid;
+
+  /// The deal's document number. An edited deal's replacement shows the
+  /// original's number, so it is shared by every version of one deal.
   final String referenceNo;
   final TransactionType type;
   final TransactionStatus status;

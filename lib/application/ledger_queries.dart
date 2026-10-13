@@ -77,8 +77,8 @@ final class JournalFilter {
     }
     final q = text?.trim();
     if (q != null && q.isNotEmpty) {
-      where.add('(t.reference_no LIKE ? OR t.description LIKE ? OR c.name LIKE ?)');
-      args.addAll(['%$q%', '%$q%', '%$q%']);
+      where.add('(t.reference_no LIKE ? OR t.document_no LIKE ? OR t.description LIKE ? OR c.name LIKE ?)');
+      args.addAll(['%$q%', '%$q%', '%$q%', '%$q%']);
     }
     return (where.isEmpty ? '' : 'WHERE ${where.join(' AND ')}', args);
   }
@@ -214,7 +214,8 @@ final class LedgerQueries {
       args.addAll(types.map((t) => t.name));
     }
     final rows = await _db.rawQuery('''
-      SELECT t.id, t.reference_no, t.type, t.status, t.description, l.effective_date,
+      SELECT t.id, COALESCE(t.document_no, t.reference_no) AS reference_no, t.type, t.status,
+             t.description, l.effective_date,
              l.debit_minor, l.credit_minor
       FROM journal_lines l
       JOIN accounts a ON a.id = l.account_id

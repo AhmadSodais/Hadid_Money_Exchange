@@ -17,6 +17,7 @@ import '../../domain/errors/domain_errors.dart';
 import '../../domain/security/permissions.dart';
 import '../database/exchange_database.dart';
 import '../database/schema_v5.dart';
+import '../database/schema_v6.dart';
 import '../export/excel_export.dart';
 
 const String kDataWorkbookApp = 'hadid_money_exchange';
@@ -263,6 +264,7 @@ final class DataTransferService {
             summary[table] = await _insertSheet(txn, table, rows);
           }
           await normalizeIdentifiers(txn);
+          await assignDocumentNumbers(txn);
           for (final perm in Permissions.all.entries) {
             await txn.insert('permissions', {
               'code': perm.key,

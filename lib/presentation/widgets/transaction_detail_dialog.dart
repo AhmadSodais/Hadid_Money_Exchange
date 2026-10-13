@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../application/read_models.dart';
+import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_typography.dart';
 import '../../core/widgets/gf_loader.dart';
 import '../../domain/transactions/financial_command.dart';
@@ -12,8 +13,9 @@ import 'order_detail_dialog_style.dart';
 import 'order_detail_info_card.dart';
 import 'transaction_actions.dart';
 
-/// Full view of one posted transaction: header, every journal line, links
-/// between edited/replacement/reversal versions, and edit/delete actions.
+/// Full view of one posted transaction: header, its items as the customer
+/// sees them (what was received and paid, in which currency), links between
+/// edited/replacement/reversal versions, and edit/delete actions.
 class TransactionDetailDialog extends StatefulWidget {
   const TransactionDetailDialog({super.key, required this.transactionId});
 
@@ -35,6 +37,9 @@ class TransactionDetailDialog extends StatefulWidget {
 
 class _TransactionDetailDialogState extends State<TransactionDetailDialog> {
   PostedTransaction? _tx;
+
+  /// For a reversal document: the transaction it cancelled.
+  PostedTransaction? _reversed;
   bool _busy = false;
 
   @override
@@ -44,8 +49,16 @@ class _TransactionDetailDialogState extends State<TransactionDetailDialog> {
   }
 
   Future<void> _load(int id) async {
-    final tx = await context.read<AppSession>().services.posting.transactionById(id);
-    if (mounted) setState(() => _tx = tx);
+    final posting = context.read<AppSession>().services.posting;
+    final tx = await posting.transactionById(id);
+    final reversedId = tx?.reversesTransactionId;
+    final reversed = reversedId == null ? null : await posting.transactionById(reversedId);
+    if (mounted) {
+      setState(() {
+        _tx = tx;
+        _reversed = reversed;
+      });
+    }
   }
 
   Future<void> _edit() async {
@@ -119,7 +132,7 @@ class _TransactionDetailDialogState extends State<TransactionDetailDialog> {
             onPressed: () => _load(tx!.reversedByTransactionId!),
           ),
       ],
-      summary: tx == null ? null : _summary(tx, s),
+      summary: tx == null ? null : _footer(tx, s),
       body: tx == null ? const SizedBox(height: 240, child: GfPageLoader()) : _body(tx, s),
     );
   }
@@ -162,41 +175,16 @@ class _TransactionDetailDialogState extends State<TransactionDetailDialog> {
             ),
           ],
         ),
-        if (tx.description != null || tx.reason != null) ...[
-          OrderDetailDialogStyle.sectionSpace,
-          OrderDetailSummaryCard(
-            rows: [
-              if (tx.description != null) OrderDetailSummaryRow(label: 'شرح', value: tx.description!, dense: true),
-              if (tx.reason != null) OrderDetailSummaryRow(label: 'دلیل', value: tx.reason!, dense: true),
-            ],
-          ),
-        ],
         OrderDetailDialogStyle.sectionSpace,
         Text(
-          'سند حسابداری (هر ارز جداگانه تراز است)',
+          'اقلام معامله',
           style: AppTypography.caption.copyWith(
             color: OrderDetailDialogStyle.muted,
             fontWeight: FontWeight.w600,
           ),
         ),
         OrderDetailDialogStyle.smallSpace,
-        OrderDetailLinesTable(
-          columns: const [
-            LedgerColumn.primary('حساب'),
-            LedgerColumn.text('ارز'),
-            LedgerColumn.amount('بدهکار'),
-            LedgerColumn.amount('طلب مشتری)'),
-          ],
-          rows: [
-            for (final l in tx.lines)
-              [
-                Text('${l.accountCode}  ${l.accountName}', maxLines: 2, overflow: TextOverflow.ellipsis),
-                Text(s.currency(l.currency)?.nameFa ?? l.currency),
-                l.debitMinor == 0 ? const Text('') : AmountText(l.debitMinor, s.currency(l.currency)),
-                l.creditMinor == 0 ? const Text('') : AmountText(l.creditMinor, s.currency(l.currency)),
-              ],
-          ],
-        ),
+        _itemsTable(tx, s),
         if (tx.status == TransactionStatus.reversed) ...[
           OrderDetailDialogStyle.sectionSpace,
           InfoBanner(
@@ -209,6 +197,123 @@ class _TransactionDetailDialogState extends State<TransactionDetailDialog> {
         if (tx.replacesTransactionId != null) ...[
           OrderDetailDialogStyle.sectionSpace,
           const InfoBanner('این نسخه اصلاح‌شده یک معامله ویرایش‌شده است.', tone: BannerTone.info),
+        ],
+      ],
+    );
+  }
+
+  static String? _text(String? value) {
+    final v = value?.trim();
+    return v == null || v.isEmpty ? null : v;
+  }
+
+  /// The items of [tx] from the exchange's side: `incoming` is money or
+  /// currency the exchange received, otherwise it paid it out.
+  List<_Item> _items(PostedTransaction tx) {
+    _Item source(String label, {required bool incoming}) =>
+        _Item(label, tx.sourceCurrency, tx.sourceAmountMinor ?? (tx.signedAmountMinor ?? 0).abs(), incoming);
+    String via(String? settlement, {required bool incoming}) =>
+        settlement == Settlement.customer.name ? (incoming ? ' (از حساب مشتری)' : ' (به حساب مشتری)') : '';
+    final up = (tx.signedAmountMinor ?? 0) >= 0;
+
+    switch (tx.type) {
+      case TransactionType.receipt:
+        return [source('دریافت پول از مشتری', incoming: true)];
+      case TransactionType.payment:
+        return [source('پرداخت پول به مشتری', incoming: false)];
+      case TransactionType.buy:
+      case TransactionType.sell:
+        final buy = tx.type == TransactionType.buy;
+        final fee = tx.feeAmountMinor;
+        return [
+          _Item(
+            (buy ? 'ارز خریداری‌شده' : 'ارز فروخته‌شده') + via(tx.sourceSettlement, incoming: buy),
+            tx.sourceCurrency,
+            tx.sourceAmountMinor ?? 0,
+            buy,
+          ),
+          _Item(
+            (buy ? 'مبلغ پرداخت‌شده در برابر آن' : 'مبلغ دریافت‌شده در برابر آن') +
+                via(tx.destSettlement, incoming: !buy),
+            tx.destCurrency,
+            tx.destAmountMinor ?? 0,
+            !buy,
+          ),
+          if (fee != null && fee > 0)
+            _Item('کمیشن' + via(tx.feeSettlement, incoming: true), tx.feeCurrency, fee, true),
+        ];
+      case TransactionType.openingCustomer:
+        return [source(up ? 'بیلانس افتتاحیه (طلب مشتری)' : 'بیلانس افتتاحیه (بدهی مشتری)', incoming: up)];
+      case TransactionType.customerAdjustment:
+        return [source(up ? 'اصلاح حساب — افزایش طلب مشتری' : 'اصلاح حساب — افزایش بدهی مشتری', incoming: up)];
+      case TransactionType.openingCash:
+        return [source('سرمایه اولیه صندوق', incoming: true)];
+      case TransactionType.cashAdjustment:
+        return [source(up ? 'اصلاح صندوق — افزایش موجودی' : 'اصلاح صندوق — کاهش موجودی', incoming: up)];
+      case TransactionType.expense:
+        return [source('مصرف از صندوق', incoming: false)];
+      case TransactionType.reversal:
+        final original = _reversed;
+        if (original == null) return [source('مبلغ برگشت‌شده', incoming: false)];
+        return [
+          for (final i in _items(original)) _Item('برگشت: ${i.label}', i.currency, i.minor, !i.incoming),
+        ];
+    }
+  }
+
+  Widget _itemsTable(PostedTransaction tx, AppSession s) {
+    final withCustomer = tx.customerId != null;
+    Widget amount(_Item i, bool incomingColumn) {
+      if (i.incoming != incomingColumn) {
+        return Text('—', style: AppTypography.body.copyWith(color: OrderDetailDialogStyle.muted));
+      }
+      return Text(
+        MoneyFormat.amount(i.minor, s.currency(i.currency)),
+        textDirection: TextDirection.ltr,
+        style: AppTypography.bodySemiBold.copyWith(
+          color: incomingColumn ? AppColors.success : AppColors.error,
+          fontFeatures: const [FontFeature.tabularFigures()],
+        ),
+      );
+    }
+
+    return OrderDetailLinesTable(
+      columns: [
+        const LedgerColumn('شرح', flex: 4),
+        const LedgerColumn('ارز', flex: 2),
+        LedgerColumn(withCustomer ? 'دریافت از مشتری' : 'ورود به صندوق', numeric: true, flex: 3),
+        LedgerColumn(withCustomer ? 'پرداخت به مشتری' : 'خروج از صندوق', numeric: true, flex: 3),
+      ],
+      rows: [
+        for (final i in _items(tx))
+          [
+            Text(i.label, maxLines: 2, overflow: TextOverflow.ellipsis),
+            Text(s.currency(i.currency)?.nameFa ?? i.currency ?? '—'),
+            amount(i, true),
+            amount(i, false),
+          ],
+      ],
+    );
+  }
+
+  /// Amounts panel followed by the description and reason, pinned at the
+  /// bottom of the dialog above the buttons.
+  Widget? _footer(PostedTransaction tx, AppSession s) {
+    final summary = _summary(tx, s);
+    final description = _text(tx.description);
+    final reason = _text(tx.reason);
+    if (summary == null && description == null && reason == null) return null;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        ?summary,
+        if (description != null) ...[
+          if (summary != null) OrderDetailDialogStyle.sectionSpace,
+          _NoteCard(icon: Icons.notes_rounded, title: 'شرح', text: description),
+        ],
+        if (reason != null) ...[
+          if (summary != null || description != null) OrderDetailDialogStyle.sectionSpace,
+          _NoteCard(icon: Icons.help_outline_rounded, title: 'دلیل', text: reason),
         ],
       ],
     );
@@ -245,6 +350,63 @@ class _TransactionDetailDialogState extends State<TransactionDetailDialog> {
       highlights: [
         if (amount != null) OrderDetailStat('مبلغ', MoneyFormat.withName(amount, src)),
       ],
+    );
+  }
+}
+
+class _Item {
+  const _Item(this.label, this.currency, this.minor, this.incoming);
+
+  final String label;
+  final String? currency;
+  final int minor;
+
+  /// Received by the exchange; otherwise paid out by it.
+  final bool incoming;
+}
+
+/// Titled card for free text (description, reason) that wraps instead of
+/// being squeezed into a label/value row.
+class _NoteCard extends StatelessWidget {
+  const _NoteCard({required this.icon, required this.title, required this.text});
+
+  final IconData icon;
+  final String title;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: OrderDetailDialogStyle.cardPadding,
+      decoration: OrderDetailDialogStyle.card,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: 18, color: OrderDetailDialogStyle.accent),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: AppTypography.caption.copyWith(color: OrderDetailDialogStyle.muted, fontSize: 12),
+                ),
+                const SizedBox(height: 4),
+                SelectableText(
+                  text,
+                  style: AppTypography.body.copyWith(
+                    color: OrderDetailDialogStyle.navy,
+                    fontSize: 13.5,
+                    height: 1.6,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

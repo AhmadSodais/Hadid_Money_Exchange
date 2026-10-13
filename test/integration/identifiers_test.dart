@@ -48,10 +48,17 @@ void main() {
 
     final edited = await h.app.posting
         .correct(transactionId: original.id, replacement: receipt(ali.id, key), reason: 'typo', actor: h.owner);
-    expect(edited.referenceNo, 'RCP-0002');
+    expect(edited.referenceNo, 'RCP-0001', reason: 'an edited deal keeps its number');
+    final internal = await h.app.db
+        .query('transactions', columns: ['reference_no'], where: 'id = ?', whereArgs: [edited.id]);
+    expect(internal.single['reference_no'], 'RCP-0002');
     final reversalId = (await h.app.posting.transactionById(original.id))!.reversedByTransactionId!;
     expect((await h.app.posting.transactionById(reversalId))!.referenceNo, 'REV-0001');
     expect(await keyOf(reversalId), '$key-R');
+
+    final editedAgain = await h.app.posting.correct(
+        transactionId: edited.id, replacement: receipt(ali.id, h.key()), reason: 'again', actor: h.owner);
+    expect(editedAgain.referenceNo, 'RCP-0001');
   });
 
   test('older formats are converted, keeping numbers and links', () async {
@@ -118,7 +125,7 @@ void main() {
     expect((await tx(original.id))!.referenceNo, 'RCP-0001');
     expect((await tx(original.id))!.uuid, matches(Ids.keyPattern));
     expect(await keyOf(original.id), matches(Ids.keyPattern));
-    expect((await tx(edited.id))!.referenceNo, 'RCP-0002');
+    expect((await tx(edited.id))!.referenceNo, 'RCP-0001');
     final newEditKey = await keyOf(edited.id);
     expect(newEditKey, matches(Ids.keyPattern));
     final reversal = (await tx(reversalId))!;

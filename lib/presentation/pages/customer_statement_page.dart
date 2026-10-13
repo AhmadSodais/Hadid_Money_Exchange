@@ -3,6 +3,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
+import '../../application/ledger_queries.dart';
 import '../../application/posting_service.dart';
 import '../../application/read_models.dart';
 import '../../core/constants/app_assets.dart';
@@ -41,8 +42,9 @@ class _CustomerStatementPageState extends State<CustomerStatementPage> with Revi
   /// `null` = the whole history.
   DateFilterValue? _period;
 
-  /// Every currency's lines in the period, newest first.
-  List<StatementLine> _lines = const [];
+  /// The customer's transactions in the period, newest first: one row per
+  /// deal, so a cash buy/sell shows up too (it never touches the account).
+  List<PostedTransaction> _txs = const [];
   bool _loading = true;
   bool _notFound = false;
   final _search = TextEditingController();
@@ -54,20 +56,33 @@ class _CustomerStatementPageState extends State<CustomerStatementPage> with Revi
     super.dispose();
   }
 
-  List<StatementLine> _visibleLines(AppSession s) {
+  /// The standard view lists current deals only; earlier versions of edited
+  /// deals and deleted deals are grouped under [_TypeFilter.changed].
+  List<PostedTransaction> _visible(AppSession s) {
+    final history = _typeFilter == _TypeFilter.changed;
     final types = _typeFilter.types;
     final query = _search.text.trim().toLowerCase();
+    bool currencyMatches(String? code) => code != null && (s.currency(code)?.nameFa.contains(query) ?? false);
     return [
-      for (final l in _lines)
-        if ((_currencyCode == null || l.currency == _currencyCode) &&
-            (types == null || types.contains(l.type)) &&
+      for (final t in _txs)
+        if (t.isActive != history &&
+            (_currencyCode == null || t.sourceCurrency == _currencyCode || t.destCurrency == _currencyCode) &&
+            (types == null || types.contains(t.type)) &&
             (query.isEmpty ||
-                l.referenceNo.toLowerCase().contains(query) ||
-                l.type.labelFa.contains(query) ||
-                (s.currency(l.currency)?.nameFa.contains(query) ?? false)))
-          l,
+                t.referenceNo.toLowerCase().contains(query) ||
+                t.type.labelFa.contains(query) ||
+                (t.description?.toLowerCase().contains(query) ?? false) ||
+                currencyMatches(t.sourceCurrency) ||
+                currencyMatches(t.destCurrency)))
+          t,
     ];
   }
+
+  /// Currencies that appear in the customer's balances or deals.
+  List<String> get _currencyCodes => {
+        for (final b in _balances) b.currency,
+        for (final t in _txs) ...[?t.sourceCurrency, ?t.destCurrency],
+      }.toList();
 
   @override
   Future<void> reload() async {
@@ -78,22 +93,80 @@ class _CustomerStatementPageState extends State<CustomerStatementPage> with Revi
       return;
     }
     final balances = await s.queries.customerBalances(customer.id);
-    final from = _period == null ? null : BusinessDate.fromDateTime(_period!.from);
-    final to = _period == null ? null : BusinessDate.fromDateTime(_period!.to);
-    final lines = <StatementLine>[
-      for (final b in balances)
-        ...(await s.queries.customerStatement(customer, b.currency, from: from, to: to)).lines,
-    ]..sort((a, b) {
-        final byDate = b.effectiveDate.compareTo(a.effectiveDate);
-        return byDate != 0 ? byDate : b.transactionId.compareTo(a.transactionId);
-      });
+    // Reversal documents are left out; the deal they cancelled stays, marked as reversed.
+    final filter = JournalFilter(
+      from: _period == null ? null : BusinessDate.fromDateTime(_period!.from),
+      to: _period == null ? null : BusinessDate.fromDateTime(_period!.to),
+      customerId: customer.id,
+      types: {...TransactionType.values}..remove(TransactionType.reversal),
+    );
+    final count = await s.queries.journalCount(filter);
+    final txs = count == 0 ? const <PostedTransaction>[] : await s.queries.journal(filter, limit: count);
     if (!mounted) return;
     setState(() {
       _customer = customer;
       _balances = balances;
-      _lines = lines;
+      _txs = txs;
       _loading = false;
     });
+  }
+
+  /// What the exchange received from and paid to the customer in [t]; a
+  /// buy/sell fills both sides, a receipt or payment only one.
+  ({_Money? received, _Money? paid}) _sides(PostedTransaction t) {
+    final source = (minor: t.sourceAmountMinor ?? 0, code: t.sourceCurrency);
+    final dest = (minor: t.destAmountMinor ?? 0, code: t.destCurrency);
+    final owedToCustomer = (t.signedAmountMinor ?? 0) >= 0;
+    return switch (t.type) {
+      TransactionType.receipt => (received: source, paid: null),
+      TransactionType.payment => (received: null, paid: source),
+      TransactionType.buy => (received: source, paid: dest),
+      TransactionType.sell => (received: dest, paid: source),
+      TransactionType.openingCustomer ||
+      TransactionType.customerAdjustment =>
+        owedToCustomer ? (received: source, paid: null) : (received: null, paid: source),
+      _ => (received: null, paid: null),
+    };
+  }
+
+  List<Widget> _row(PostedTransaction t, AppSession s) {
+    final sides = _sides(t);
+    final (String, Color)? tag = t.wasEdited
+        ? ('نسخه قبل از ویرایش', AppColors.warning)
+        : !t.isActive
+            ? ('حذف‌شده', AppColors.error)
+            : t.replacesTransactionId != null
+                ? ('ویرایش‌شده', AppColors.primary)
+                : null;
+    final description = Text(
+      (t.description?.trim().isNotEmpty ?? false) ? t.description!.trim() : '—',
+      maxLines: 2,
+      overflow: TextOverflow.ellipsis,
+      style: AppTypography.body.copyWith(color: AppColors.textSecondary),
+    );
+    return [
+      Text(DateFormatFa.business(t.effectiveDate), style: AppTypography.body),
+      Text(t.referenceNo, style: AppTypography.caption, textDirection: TextDirection.ltr),
+      TransactionTypeBadge(t.type),
+      _MoneyCell(sides.received, session: s, color: AppColors.success, faded: !t.isActive),
+      _MoneyCell(sides.paid, session: s, color: AppColors.error, faded: !t.isActive),
+      Text(
+        t.isExchange && t.rate != null ? MoneyFormat.rate(t.rate!) : '—',
+        textDirection: TextDirection.ltr,
+        style: AppTypography.body.copyWith(color: t.isExchange ? AppColors.textPrimary : AppColors.textMuted),
+      ),
+      const SizedBox.shrink(),
+      if (tag case (final label, final color))
+        Row(
+          children: [
+            _StatusTag(label, color),
+            const SizedBox(width: 6),
+            Expanded(child: description),
+          ],
+        )
+      else
+        description,
+    ];
   }
 
   @override
@@ -105,7 +178,8 @@ class _CustomerStatementPageState extends State<CustomerStatementPage> with Revi
     final customer = _customer;
     final canOpening = s.can(Permissions.openingBalancesPost);
     final canAdjust = s.can(Permissions.adjustmentsPost);
-    final lines = _visibleLines(s);
+    final txs = _visible(s);
+    final changedCount = _txs.where((t) => !t.isActive).length;
     final filtered =
         _currencyCode != null || _typeFilter != _TypeFilter.all || _search.text.trim().isNotEmpty;
     return PageScaffold(
@@ -195,8 +269,8 @@ class _CustomerStatementPageState extends State<CustomerStatementPage> with Revi
                 const SizedBox(height: AppSpacing.sm),
                 Expanded(
                   child: LedgerTable(
-                    title: 'معاملات مشتری',
-                    titleCount: lines.length,
+                    title: _typeFilter == _TypeFilter.changed ? 'معاملات ویرایش‌شده و حذف‌شده' : 'معاملات مشتری',
+                    titleCount: txs.length,
                     actions: [
                       // One action keeps the table from stacking the controls under the title.
                       Row(
@@ -205,9 +279,15 @@ class _CustomerStatementPageState extends State<CustomerStatementPage> with Revi
                           GfMenuFilter<_TypeFilter>(
                             value: _typeFilter,
                             width: 160,
+                            panelWidth: 300,
                             options: [
                               for (final f in _TypeFilter.values)
-                                GfMenuFilterOption(value: f, label: f.label, icon: f.icon, subtitle: f.hint),
+                                GfMenuFilterOption(
+                                  value: f,
+                                  label: f.label,
+                                  icon: f.icon,
+                                  subtitle: f == _TypeFilter.changed ? '$changedCount مورد — ${f.hint}' : f.hint,
+                                ),
                             ],
                             onChanged: (f) => setState(() => _typeFilter = f),
                           ),
@@ -223,12 +303,12 @@ class _CustomerStatementPageState extends State<CustomerStatementPage> with Revi
                                 icon: Icons.public_rounded,
                                 subtitle: 'معاملات همه ارزهای مشتری',
                               ),
-                              for (final b in _balances)
+                              for (final code in _currencyCodes)
                                 GfMenuFilterOption(
-                                  value: b.currency,
-                                  label: s.currency(b.currency)?.nameFa ?? b.currency,
+                                  value: code,
+                                  label: s.currency(code)?.nameFa ?? code,
                                   icon: Icons.payments_outlined,
-                                  subtitle: b.currency,
+                                  subtitle: code,
                                 ),
                             ],
                             onChanged: (code) => setState(() => _currencyCode = code),
@@ -237,7 +317,7 @@ class _CustomerStatementPageState extends State<CustomerStatementPage> with Revi
                           GfSearchField(
                             controller: _search,
                             width: 240,
-                            hintText: 'شماره سند یا نوع معامله',
+                            hintText: 'شماره سند، نوع معامله یا شرح',
                             showShortcutHint: false,
                             onChanged: (_) => setState(() {}),
                           ),
@@ -249,41 +329,21 @@ class _CustomerStatementPageState extends State<CustomerStatementPage> with Revi
                     emptyText: filtered
                         ? 'معامله‌ای با این جستجو یا فیلتر یافت نشد.'
                         : 'در این دوره معامله‌ای ثبت نشده است.',
-                    emptyHint: filtered
-                        ? 'ارز، نوع معامله یا عبارت جستجو را تغییر دهید.'
-                        : (_balances.isEmpty ? 'برای این مشتری هنوز معامله‌ای ثبت نشده است.' : null),
+                    emptyHint: filtered ? 'ارز، نوع معامله یا عبارت جستجو را تغییر دهید.' : null,
                     // Equal shares, so the columns spread evenly across the whole row.
                     columns: const [
                       LedgerColumn('تاریخ'),
                       LedgerColumn('شماره سند'),
                       LedgerColumn('نوع معامله'),
-                      LedgerColumn('جهت'),
-                      LedgerColumn('ارز'),
-                      LedgerColumn('مبلغ', numeric: true),
-                      // The amount hugs its end edge; this gap keeps it off the description.
+                      LedgerColumn('دریافت از مشتری', numeric: true),
+                      LedgerColumn('پرداخت به مشتری', numeric: true),
+                      LedgerColumn('نرخ', numeric: true),
+                      // The rate hugs its end edge; this gap keeps it off the description.
                       LedgerColumn('', width: 24),
                       LedgerColumn('شرح'),
                     ],
-                    rows: [
-                      for (final l in lines)
-                        [
-                          Text(DateFormatFa.business(l.effectiveDate), style: AppTypography.body),
-                          Text(l.referenceNo, style: AppTypography.caption, textDirection: TextDirection.ltr),
-                          TransactionTypeBadge(l.type, reversed: l.status == TransactionStatus.reversed),
-                          _DirectionCell(intoAccount: l.creditMinor > 0),
-                          Text(s.currency(l.currency)?.nameFa ?? l.currency, style: AppTypography.bodyMedium),
-                          Opacity(
-                            opacity: l.status == TransactionStatus.reversed ? 0.5 : 1,
-                            child: AmountText(l.debitMinor + l.creditMinor, s.currency(l.currency), bold: true),
-                          ),
-                          const SizedBox.shrink(),
-                          Text(
-                            (l.description?.trim().isNotEmpty ?? false) ? l.description!.trim() : '—',
-                            style: AppTypography.body.copyWith(color: AppColors.textSecondary),
-                          ),
-                        ],
-                    ],
-                    onTapRow: (i) => TransactionDetailDialog.show(context, lines[i].transactionId),
+                    rows: [for (final t in txs) _row(t, s)],
+                    onTapRow: (i) => TransactionDetailDialog.show(context, txs[i].id),
                   ),
                 ),
               ],
@@ -299,11 +359,11 @@ enum _TypeFilter {
   payment('برد', 'پول پرداخت‌شده به مشتری', Icons.north_east_rounded, {TransactionType.payment}),
   buy('خرید', 'خرید ارز از مشتری', Icons.shopping_cart_outlined, {TransactionType.buy}),
   sell('فروش', 'فروش ارز به مشتری', Icons.sell_outlined, {TransactionType.sell}),
-  other('سایر', 'بیلانس افتتاحیه، اصلاح حساب و برگشت', Icons.more_horiz_rounded, {
+  other('سایر', 'بیلانس افتتاحیه و اصلاح حساب', Icons.more_horiz_rounded, {
     TransactionType.openingCustomer,
     TransactionType.customerAdjustment,
-    TransactionType.reversal,
-  });
+  }),
+  changed('ویرایش و حذف‌شده', 'نسخه قبلی معاملات ویرایش‌شده و معاملات حذف‌شده', Icons.history_rounded, null);
 
   const _TypeFilter(this.label, this.hint, this.icon, this.types);
 
@@ -313,29 +373,57 @@ enum _TypeFilter {
   final Set<TransactionType>? types;
 }
 
-/// Whether the line added money to the customer's account or took it out.
-class _DirectionCell extends StatelessWidget {
-  const _DirectionCell({required this.intoAccount});
+typedef _Money = ({int minor, String? code});
 
-  final bool intoAccount;
+/// Small pill marking an edited, earlier-version, or deleted deal.
+class _StatusTag extends StatelessWidget {
+  const _StatusTag(this.label, this.color);
+
+  final String label;
+  final Color color;
 
   @override
   Widget build(BuildContext context) {
-    final color = intoAccount ? AppColors.success : AppColors.error;
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(intoAccount ? Icons.south_west_rounded : Icons.north_east_rounded, size: 16, color: color),
-        const SizedBox(width: 6),
-        Flexible(
-          child: Text(
-            intoAccount ? 'واریز به حساب' : 'برداشت از حساب',
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: AppTypography.body.copyWith(color: color, fontWeight: FontWeight.w600),
-          ),
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.10),
+        borderRadius: AppRadius.pill,
+        border: Border.all(color: color.withValues(alpha: 0.30)),
+      ),
+      child: Text(
+        label,
+        style: AppTypography.caption.copyWith(fontSize: 11, fontWeight: FontWeight.w600, color: color),
+      ),
+    );
+  }
+}
+
+/// Amount with its currency name in the side's colour, or a muted dash.
+class _MoneyCell extends StatelessWidget {
+  const _MoneyCell(this.money, {required this.session, required this.color, this.faded = false});
+
+  final _Money? money;
+  final AppSession session;
+  final Color color;
+
+  /// Deleted or edited deals stay listed but no longer count.
+  final bool faded;
+
+  @override
+  Widget build(BuildContext context) {
+    final m = money;
+    if (m == null) return Text('—', style: AppTypography.body.copyWith(color: AppColors.textMuted));
+    return Opacity(
+      opacity: faded ? 0.5 : 1,
+      child: Text(
+        MoneyFormat.withName(m.minor, session.currency(m.code), fallbackCode: m.code),
+        textDirection: TextDirection.ltr,
+        style: AppTypography.bodySemiBold.copyWith(
+          color: color,
+          fontFeatures: const [FontFeature.tabularFigures()],
         ),
-      ],
+      ),
     );
   }
 }

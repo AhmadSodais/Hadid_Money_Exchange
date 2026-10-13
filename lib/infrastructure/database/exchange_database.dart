@@ -9,6 +9,7 @@ import 'schema_v2.dart';
 import 'schema_v3.dart';
 import 'schema_v4.dart';
 import 'schema_v5.dart';
+import 'schema_v6.dart';
 
 /// A versioned schema migration applied inside a single transaction.
 final class SchemaMigration {
@@ -52,6 +53,7 @@ abstract final class ExchangeDatabase {
       }
     }),
     SchemaMigration(5, 'short_identifiers', (txn, seed) => normalizeIdentifiers(txn)),
+    SchemaMigration(6, 'document_numbers', (txn, seed) => addDocumentNumbers(txn)),
   ];
 
   static int get latestVersion => migrations.last.version;

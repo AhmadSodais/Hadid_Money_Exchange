@@ -3,7 +3,6 @@ import 'package:provider/provider.dart';
 
 import '../../application/ledger_queries.dart';
 import '../../application/read_models.dart';
-import '../../core/constants/app_assets.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_spacing.dart';
 import '../../core/theme/app_typography.dart';
@@ -30,13 +29,15 @@ class JournalPage extends StatefulWidget {
 }
 
 enum _View {
-  active('معاملات فعال'),
-  removed('حذف یا ویرایش‌شده'),
-  all('همه (با اسناد برگشت)');
+  active('معاملات فعال', 'معاملاتی که در موجودی‌ها حساب می‌شوند', Icons.check_circle_outline_rounded),
+  removed('حذف یا ویرایش‌شده', 'معاملات حذف‌شده و نسخه قبلی معاملات ویرایش‌شده', Icons.history_rounded),
+  all('همه (با اسناد برگشت)', 'همه معاملات همراه با اسناد برگشت', Icons.list_alt_rounded);
 
-  const _View(this.label);
+  const _View(this.label, this.hint, this.icon);
 
   final String label;
+  final String hint;
+  final IconData icon;
 }
 
 enum _RowAction { details, edit, delete }
@@ -114,17 +115,13 @@ class _JournalPageState extends State<JournalPage> with RevisionReload {
     );
   }
 
+  /// Just the main amount; rate, counter amount, and the rest are in the
+  /// detail dialog.
   String _details(PostedTransaction t, AppSession s) {
     final src = s.currency(t.sourceCurrency);
-    if (t.isExchange) {
-      return '${MoneyFormat.withName(t.sourceAmountMinor ?? 0, src)} × ${MoneyFormat.rate(t.rate ?? '')} = '
-          '${MoneyFormat.withName(t.destAmountMinor ?? 0, s.currency(t.destCurrency))}';
-    }
-    if (t.signedAmountMinor != null) {
-      return MoneyFormat.withName(t.signedAmountMinor!, src);
-    }
-    if (t.sourceAmountMinor != null) return MoneyFormat.withName(t.sourceAmountMinor!, src);
-    return t.description ?? '';
+    final amount = t.signedAmountMinor ?? t.sourceAmountMinor;
+    if (amount != null) return MoneyFormat.withName(amount, src, fallbackCode: t.sourceCurrency);
+    return t.description ?? '—';
   }
 
   @override
@@ -137,6 +134,18 @@ class _JournalPageState extends State<JournalPage> with RevisionReload {
       searchHint: 'شماره سند، شرح یا نام مشتری',
       onSearch: (_) => _refilter(),
       actions: [
+        // GfMenuFilter<_TypeFilter>(
+        //   value: _typeFilter,
+        //   width: 170,
+        //   options: [
+        //     for (final f in _TypeFilter.values)
+        //       GfMenuFilterOption(value: f, label: f.label, icon: f.icon, subtitle: f.hint),
+        //   ],
+        //   onChanged: (f) {
+        //     setState(() => _typeFilter = f);
+        //     _refilter();
+        //   },
+        // ),
         GfDateFilter(
           value: _dateFilter,
           onChanged: (v) {
@@ -148,37 +157,10 @@ class _JournalPageState extends State<JournalPage> with RevisionReload {
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              GfCountBox(label: 'تعداد معاملات', count: _total, icon: AppAssets.invoiceFilled),
-              const SizedBox(width: 12),
-              Expanded(
-                child: SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(
-                    children: [
-                      for (final f in _TypeFilter.values) ...[
-                        if (f != _TypeFilter.values.first) const SizedBox(width: 8),
-                        GfFilterChip(
-                          label: f.label,
-                          selected: _typeFilter == f,
-                          onTap: () {
-                            setState(() => _typeFilter = f);
-                            _refilter();
-                          },
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: AppSpacing.sm),
           Expanded(
             child: LedgerTable(
               title: 'معاملات ثبت‌شده',
+              titleCount: _total,
               subtitle: 'برای جزئیات روی ردیف کلیک کنید؛ ویرایش و حذف از منوی ⋮ انتهای ردیف.',
               isLoading: _loading,
               minWidth: 1050,
@@ -186,29 +168,60 @@ class _JournalPageState extends State<JournalPage> with RevisionReload {
               emptyText: 'معامله‌ای یافت نشد.',
               emptyHint: 'بازه تاریخ یا فیلترها را تغییر دهید.',
               actions: [
-                GfDropdown<_View>(
-                  width: 210,
-                  prefixIcon: Icons.flag_outlined,
-                  items: _View.values,
-                  value: _view,
-                  labelBuilder: (v) => v.label,
-                  onChanged: (v) {
-                    if (v == null) return;
-                    _view = v;
-                    _refilter();
-                  },
-                ),
-                GfDropdown<Currency?>(
-                  width: 150,
-                  hint: 'همه ارزها',
-                  prefixIcon: Icons.currency_exchange,
-                  items: [null, ...s.activeCurrencies],
-                  value: _currency,
-                  labelBuilder: (c) => c == null ? 'همه ارزها' : c.nameFa,
-                  onChanged: (c) {
-                    _currency = c;
-                    _refilter();
-                  },
+                // One action keeps the table from stacking the controls under the title.
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    GfMenuFilter<_TypeFilter>(
+                      value: _typeFilter,
+                      width: 170,
+                      options: [
+                        for (final f in _TypeFilter.values)
+                          GfMenuFilterOption(value: f, label: f.label, icon: f.icon, subtitle: f.hint),
+                      ],
+                      onChanged: (f) {
+                        setState(() => _typeFilter = f);
+                        _refilter();
+                      },
+                    ),
+                    const SizedBox(width: AppSpacing.sm),
+                    GfMenuFilter<_View>(
+                      value: _view,
+                      width: 210,
+                      options: [
+                        for (final v in _View.values)
+                          GfMenuFilterOption(value: v, label: v.label, icon: v.icon, subtitle: v.hint),
+                      ],
+                      onChanged: (v) {
+                        setState(() => _view = v);
+                        _refilter();
+                      },
+                    ),
+                    const SizedBox(width: AppSpacing.sm),
+                    GfMenuFilter<String?>(
+                      value: _currency?.code,
+                      width: 160,
+                      options: [
+                        const GfMenuFilterOption(
+                          value: null,
+                          label: 'همه ارزها',
+                          icon: Icons.public_rounded,
+                          subtitle: 'معاملات همه ارزها',
+                        ),
+                        for (final c in s.activeCurrencies)
+                          GfMenuFilterOption(
+                            value: c.code,
+                            label: c.nameFa,
+                            icon: Icons.payments_outlined,
+                            subtitle: c.code,
+                          ),
+                      ],
+                      onChanged: (code) {
+                        setState(() => _currency = s.currency(code));
+                        _refilter();
+                      },
+                    ),
+                  ],
                 ),
               ],
               columns: const [
@@ -267,13 +280,13 @@ class _JournalPageState extends State<JournalPage> with RevisionReload {
 }
 
 enum _TypeFilter {
-  all('همه', null),
-  receipt('رسید', {TransactionType.receipt}),
-  payment('برد', {TransactionType.payment}),
-  buy('خرید', {TransactionType.buy}),
-  sell('فروش', {TransactionType.sell}),
-  expense('مصرف', {TransactionType.expense}),
-  other('سایر', {
+  all('همه معاملات', 'همه انواع معامله', Icons.list_alt_rounded, null),
+  receipt('رسید', 'پول دریافت‌شده از مشتری', Icons.south_west_rounded, {TransactionType.receipt}),
+  payment('برد', 'پول پرداخت‌شده به مشتری', Icons.north_east_rounded, {TransactionType.payment}),
+  buy('خرید', 'خرید ارز از مشتری', Icons.shopping_cart_outlined, {TransactionType.buy}),
+  sell('فروش', 'فروش ارز به مشتری', Icons.sell_outlined, {TransactionType.sell}),
+  expense('مصرف', 'مصارف پرداخت‌شده از صندوق', Icons.receipt_long_outlined, {TransactionType.expense}),
+  other('سایر', 'بیلانس افتتاحیه، اصلاحات و اسناد برگشت', Icons.more_horiz_rounded, {
     TransactionType.openingCash,
     TransactionType.openingCustomer,
     TransactionType.cashAdjustment,
@@ -281,8 +294,10 @@ enum _TypeFilter {
     TransactionType.reversal,
   });
 
-  const _TypeFilter(this.label, this.types);
+  const _TypeFilter(this.label, this.hint, this.icon, this.types);
 
   final String label;
+  final String hint;
+  final IconData icon;
   final Set<TransactionType>? types;
 }
