@@ -12,6 +12,7 @@ import '../../core/theme/app_spacing.dart';
 import '../../core/theme/app_typography.dart';
 import '../../core/utils/gf_breakpoints.dart';
 import '../../core/widgets/gf_responsive.dart';
+import '../../core/widgets/gf_scroll_behavior.dart';
 import '../../core/widgets/gf_search_field.dart';
 import '../providers/app_settings_provider.dart';
 import '../session/app_session.dart';
@@ -519,7 +520,7 @@ class PageScaffold extends StatelessWidget {
                 fromY: -32,
                 child: padBody
                     ? Padding(padding: pageBodyPadding(context), child: body)
-                    : body,
+                    : GfNoScrollbarGutter(child: body),
               ),
             ),
           ],
