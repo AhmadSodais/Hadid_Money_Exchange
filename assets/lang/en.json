@@ -1978,14 +1978,10 @@
     }
   },
   "deviceAuth": {
-    "title": "Device not authorized",
-    "message": "This computer is not registered to use Hadid. Access is limited to licensed devices only. Please contact the company representative to register this machine.",
-    "detectedMacs": "Detected MAC address(es)",
-    "noMacDetected": "No network adapter MAC could be detected. Connect to a network adapter and try again.",
-    "contactTitle": "Contact for registration",
-    "retry": "Check again",
-    "copyMac": "Copy MAC",
-    "macCopied": "MAC address copied",
+    "badge": "Restricted access",
+    "title": "You don't have access",
+    "message": "Access to this app is not enabled for you. Please contact us to get access.",
+    "contactTitle": "Contact us for access",
     "copyPhone": "Copy phone",
     "phoneCopied": "Phone number copied"
   },

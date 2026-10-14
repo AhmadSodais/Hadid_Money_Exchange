@@ -27,8 +27,10 @@ import 'core/widgets/gf_snackbar.dart';
 import 'core/widgets/gf_toast.dart';
 import 'presentation/providers/app_lock_provider.dart';
 import 'presentation/providers/app_settings_provider.dart';
+import 'presentation/providers/device_authorization_provider.dart';
 import 'presentation/session/app_session.dart';
 import 'presentation/widgets/app_lock_gate.dart';
+import 'presentation/widgets/device_auth_gate.dart';
 
 bool _isWindowsKeyboardGlitch(Object error) {
   final text = error.toString();
@@ -112,6 +114,7 @@ Future<void> main() async {
       saveLocale: false,
       child: MultiProvider(
         providers: [
+          ChangeNotifierProvider(create: (_) => DeviceAuthorizationProvider(), lazy: false),
           ChangeNotifierProvider(create: (_) => AppSettingsProvider(prefs)),
           ChangeNotifierProvider(create: (_) => AppLockProvider(prefs)),
           if (session != null) ChangeNotifierProvider.value(value: session),
@@ -175,6 +178,10 @@ class HadidExchangeApp extends StatelessWidget {
         localizationsDelegates: delegates,
         supportedLocales: context.supportedLocales,
         locale: context.locale,
+        builder: (context, child) => DeviceAuthGate(
+          frame: (screen) => GfSnackbarHost(child: screen),
+          child: child ?? const SizedBox.shrink(),
+        ),
         home: _StartupErrorScreen(error: startupError ?? ''),
       );
     }
@@ -225,16 +232,21 @@ class HadidExchangeApp extends StatelessWidget {
           );
         }
 
-        return AppLockGate(
-          child: Theme(
-            data: withAppFont(Theme.of(context)),
-            child: DefaultTextStyle.merge(
-              style: TextStyle(fontFamily: family, color: AppColors.textPrimary),
-              child: GfSnackbarHost(
-                child: _StartupNotice(
-                  warning: startupWarning,
-                  child: child ?? const SizedBox.shrink(),
-                ),
+        Widget themed(Widget content) => Theme(
+              data: withAppFont(Theme.of(context)),
+              child: DefaultTextStyle.merge(
+                style: TextStyle(fontFamily: family, color: AppColors.textPrimary),
+                child: GfSnackbarHost(child: content),
+              ),
+            );
+
+        return DeviceAuthGate(
+          frame: themed,
+          child: AppLockGate(
+            child: themed(
+              _StartupNotice(
+                warning: startupWarning,
+                child: child ?? const SizedBox.shrink(),
               ),
             ),
           ),
