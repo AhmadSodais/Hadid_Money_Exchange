@@ -2,6 +2,8 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import 'gf_scale.dart';
+
 /// Layout sizes for dashboard chrome and widget grids.
 enum GfLayoutSize { mobile, tablet, desktop }
 
@@ -33,13 +35,16 @@ abstract final class GfBreakpoints {
     return ofWidth(MediaQuery.sizeOf(context).width);
   }
 
-  static GfLayoutMetrics metricsFor(GfLayoutSize size) =>
-      GfLayoutMetrics(size);
+  static GfLayoutMetrics metricsFor(
+    GfLayoutSize size, {
+    double uiScale = 1.0,
+  }) =>
+      GfLayoutMetrics(size, uiScale: uiScale);
 
   static GfLayoutMetrics metricsOf(BuildContext context) {
     final scope = GfLayoutScope.maybeOf(context);
     if (scope != null) return scope.metrics;
-    return GfLayoutMetrics(of(context));
+    return GfLayoutMetrics(of(context), uiScale: GfScale.of(context));
   }
 
   /// KPI columns for a given available width (content area).
@@ -66,30 +71,39 @@ abstract final class GfBreakpoints {
 
 /// Spacing, columns, and split behavior for a [GfLayoutSize].
 class GfLayoutMetrics {
-  const GfLayoutMetrics(this.size);
+  const GfLayoutMetrics(this.size, {this.uiScale = 1.0});
 
   final GfLayoutSize size;
+
+  /// Window UI scale from [GfScale] (≤ 1 on smaller screens).
+  final double uiScale;
 
   bool get isMobile => size == GfLayoutSize.mobile;
   bool get isTablet => size == GfLayoutSize.tablet;
   bool get isDesktop => size == GfLayoutSize.desktop;
 
   /// Main content padding.
-  double get pagePadding => switch (size) {
+  double get pagePadding =>
+      uiScale *
+      switch (size) {
         GfLayoutSize.desktop => 28,
         GfLayoutSize.tablet => 20,
         GfLayoutSize.mobile => 14,
       };
 
   /// Top padding above the page header and bottom padding below the page body.
-  double get pageVerticalPadding => switch (size) {
+  double get pageVerticalPadding =>
+      uiScale *
+      switch (size) {
         GfLayoutSize.desktop => 14,
         GfLayoutSize.tablet => 12,
         GfLayoutSize.mobile => 10,
       };
 
   /// Gap between dashboard widgets.
-  double get gridGap => switch (size) {
+  double get gridGap =>
+      uiScale *
+      switch (size) {
         GfLayoutSize.desktop => 20,
         GfLayoutSize.tablet => 16,
         GfLayoutSize.mobile => 12,
@@ -121,8 +135,8 @@ class GfLayoutMetrics {
   int get primaryFlex => 13;
   int get secondaryFlex => 7;
 
-  double get chartMinHeight => isMobile ? 220 : 260;
-  double get stackedChartHeight => isMobile ? 240 : 280;
+  double get chartMinHeight => (isMobile ? 220 : 260) * uiScale;
+  double get stackedChartHeight => (isMobile ? 240 : 280) * uiScale;
 }
 
 /// Provides layout size and optional mobile drawer control to descendants.
@@ -155,6 +169,7 @@ class GfLayoutScope extends InheritedWidget {
   bool updateShouldNotify(GfLayoutScope oldWidget) {
     return size != oldWidget.size ||
         openDrawer != oldWidget.openDrawer ||
-        contentWidth != oldWidget.contentWidth;
+        contentWidth != oldWidget.contentWidth ||
+        metrics.uiScale != oldWidget.metrics.uiScale;
   }
 }

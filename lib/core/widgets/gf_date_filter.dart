@@ -286,7 +286,7 @@ class _GfDateFilterState extends State<GfDateFilter> {
         },
         child: SizedBox(
           width: widget.width,
-          height: AppSpacing.controlHeight,
+          height: AppSpacing.controlHeightOf(context),
           child: Material(
             color: AppColors.card,
             borderRadius: BorderRadius.circular(8),
@@ -591,7 +591,7 @@ class _DateBox extends StatelessWidget {
       onTap: onTap,
       borderRadius: AppRadius.input,
       child: Container(
-        height: AppSpacing.controlHeight,
+        height: AppSpacing.controlHeightOf(context),
         padding: const EdgeInsets.symmetric(horizontal: 12),
         decoration: BoxDecoration(
           borderRadius: AppRadius.input,

@@ -116,7 +116,7 @@ class _GfActionMenuState extends State<GfActionMenu> {
         },
         child: SizedBox(
           width: widget.width,
-          height: AppSpacing.controlHeight,
+          height: AppSpacing.controlHeightOf(context),
           child: Material(
             color: AppColors.card,
             borderRadius: BorderRadius.circular(8),

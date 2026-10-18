@@ -1,4 +1,12 @@
+import 'package:flutter/widgets.dart';
+
+import '../utils/gf_scale.dart';
+
 /// GlassFlow spacing tokens.
+///
+/// Base values are design pixels at [GfScale.referenceWidth] ×
+/// [GfScale.referenceHeight]. Prefer the `*Of(context)` helpers for control
+/// heights, table rows, and sidebar widths so they track window scale.
 abstract final class AppSpacing {
   static const double xxs = 4;
   static const double xs = 8;
@@ -29,4 +37,15 @@ abstract final class AppSpacing {
 
   static const double dropdownMaxHeight = 280;
   static const double drawerWidth = 420;
+
+  static double controlHeightOf(BuildContext context) =>
+      GfScale.s(context, controlHeight);
+
+  static double tableRowHeightOf(BuildContext context) =>
+      GfScale.s(context, tableRowHeight);
+
+  /// Sidebar widths stay fixed — do not scale (collapsed logo/padding floor).
+  static double sidebarExpandedOf(BuildContext context) => sidebarExpanded;
+
+  static double sidebarCollapsedOf(BuildContext context) => sidebarCollapsed;
 }

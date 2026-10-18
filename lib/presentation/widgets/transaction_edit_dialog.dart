@@ -16,6 +16,7 @@ import '../../domain/money/decimal.dart';
 import '../../domain/shared/business_date.dart';
 import '../../domain/transactions/financial_command.dart';
 import '../format/money_format.dart';
+import '../providers/app_settings_provider.dart';
 import '../session/app_session.dart';
 import 'exchange_ui.dart';
 
@@ -62,6 +63,7 @@ class _TransactionEditDialogState extends State<TransactionEditDialog> {
 
   /// Opening customer balance: true = the exchange owes the customer (طلب).
   bool _owesCustomer = true;
+  int? _drawerId;
   late final String _initial;
   bool _saving = false;
 
@@ -85,6 +87,10 @@ class _TransactionEditDialogState extends State<TransactionEditDialog> {
     final amount = (_o.signedAmountMinor ?? _o.sourceAmountMinor ?? 0).abs();
     if (_currency != null) _amount.text = MoneyFormat.editable(amount, _currency!);
     _owesCustomer = (_o.signedAmountMinor ?? 1) > 0;
+    final drawers = s.activeDrawers;
+    final pref = context.read<AppSettingsProvider>().selectedDrawerId;
+    _drawerId = _o.drawerId ??
+        (drawers.any((d) => d.id == pref) ? pref : drawers.firstOrNull?.id);
     _rate.text = _o.rate == null ? '' : MoneyFormat.rate(_o.rate!).replaceAll(',', '');
     final feeCur = s.currency(_o.feeCurrency);
     if (_o.feeAmountMinor != null && feeCur != null) {
@@ -119,6 +125,7 @@ class _TransactionEditDialogState extends State<TransactionEditDialog> {
         _type.name,
         _date.iso,
         _customerId,
+        _drawerId,
         _currency?.code,
         _quote?.code,
         _currency == null ? _amount.text : MoneyFormat.tryParse(_amount.text, _currency!),
@@ -159,7 +166,7 @@ class _TransactionEditDialogState extends State<TransactionEditDialog> {
       fail('مشتری را انتخاب کنید.');
       return null;
     }
-    final drawerId = _o.drawerId ?? 1;
+    final drawerId = _drawerId ?? _o.drawerId ?? 1;
     final description = _description.text.trim().isEmpty ? null : _description.text.trim();
     switch (_family) {
       case _Family.cash:
@@ -246,7 +253,8 @@ class _TransactionEditDialogState extends State<TransactionEditDialog> {
             description: description,
             customerId: _customerId!,
             currency: c.code,
-            signedMinor: _owesCustomer ? minor : -minor);
+            signedMinor: _owesCustomer ? minor : -minor,
+            drawerId: _owesCustomer ? drawerId : null);
     }
   }
 
@@ -401,6 +409,13 @@ class _TransactionEditDialogState extends State<TransactionEditDialog> {
             expand: true,
             onChanged: (v) => setState(() => _owesCustomer = v),
           ),
+          if (_owesCustomer) ...[
+            const SizedBox(height: 12),
+            DrawerPicker(
+              value: _drawerId,
+              onChanged: (id) => setState(() => _drawerId = id),
+            ),
+          ],
         ],
       ],
     );
@@ -489,7 +504,7 @@ class _ReadOnlyField extends StatelessWidget {
         Text(label, style: AppTypography.label, maxLines: 1, overflow: TextOverflow.ellipsis),
         const SizedBox(height: AppSpacing.xs),
         Container(
-          height: AppSpacing.controlHeight,
+          height: AppSpacing.controlHeightOf(context),
           alignment: AlignmentDirectional.centerStart,
           padding: const EdgeInsets.symmetric(horizontal: 12),
           decoration: BoxDecoration(

@@ -757,7 +757,7 @@ class _ResultField extends StatelessWidget {
         Text(label, style: AppTypography.label, maxLines: 1, overflow: TextOverflow.ellipsis),
         const SizedBox(height: AppSpacing.xs),
         Container(
-          height: AppSpacing.controlHeight,
+          height: AppSpacing.controlHeightOf(context),
           padding: const EdgeInsets.symmetric(horizontal: 12),
           decoration: BoxDecoration(
             color: AppColors.primarySoft,

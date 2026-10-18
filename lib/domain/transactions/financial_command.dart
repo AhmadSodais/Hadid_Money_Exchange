@@ -197,7 +197,9 @@ final class OpeningCashCommand extends FinancialCommand {
 }
 
 /// Opening balance of a customer. Sign follows the customer-position
-/// convention: positive = exchange owes the customer.
+/// convention: positive = exchange owes the customer (طلب مشتری) and the
+/// funds are treated as cash already in [drawerId]; negative = the customer
+/// owes the exchange (بدهی مشتری) and is offset against opening equity.
 final class OpeningCustomerCommand extends FinancialCommand {
   const OpeningCustomerCommand({
     required super.idempotencyKey,
@@ -206,11 +208,15 @@ final class OpeningCustomerCommand extends FinancialCommand {
     required this.customerId,
     required this.currency,
     required this.signedMinor,
+    this.drawerId,
   });
 
   final int customerId;
   final String currency;
   final int signedMinor;
+
+  /// Required when [signedMinor] is positive (cash vault increases).
+  final int? drawerId;
 
   @override
   TransactionType get type => TransactionType.openingCustomer;

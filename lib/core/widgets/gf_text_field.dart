@@ -184,7 +184,7 @@ class _GfTextFieldState extends State<GfTextField> {
       ],
     ];
     final textStyle = AppTypography.fieldStyle(context: context);
-    final controlH = widget.height ?? AppSpacing.controlHeight;
+    final controlH = widget.height ?? AppSpacing.controlHeightOf(context);
     final externalError = widget.errorText;
     final showError =
         (externalError != null && externalError.isNotEmpty) ||

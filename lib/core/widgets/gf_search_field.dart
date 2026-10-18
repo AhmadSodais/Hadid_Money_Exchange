@@ -71,7 +71,7 @@ class _GfSearchFieldState extends State<GfSearchField> {
     final borderWidth = _focused ? 1.5 : 1.0;
 
     final field = SizedBox(
-      height: AppSpacing.controlHeight,
+      height: AppSpacing.controlHeightOf(context),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 120),
         decoration: BoxDecoration(

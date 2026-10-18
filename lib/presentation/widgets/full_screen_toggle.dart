@@ -32,8 +32,9 @@ class _FullScreenToggleState extends State<FullScreenToggle> {
         final tooltip = isFullScreen
             ? 'common.exitFullScreen'.tr()
             : 'common.fullScreen'.tr();
+        final controlH = AppSpacing.controlHeightOf(context);
         return Container(
-          height: AppSpacing.controlHeight,
+          height: controlH,
           padding: const EdgeInsets.all(3),
           decoration: BoxDecoration(
             color: AppColors.card,
@@ -57,8 +58,8 @@ class _FullScreenToggleState extends State<FullScreenToggle> {
                   child: AnimatedContainer(
                     duration: AppDurations.normal,
                     curve: Curves.easeOut,
-                    width: AppSpacing.controlHeight - 8,
-                    height: AppSpacing.controlHeight - 8,
+                    width: controlH - 8,
+                    height: controlH - 8,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       color: isFullScreen

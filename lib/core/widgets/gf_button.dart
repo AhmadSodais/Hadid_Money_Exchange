@@ -13,9 +13,10 @@ ButtonStyle _gfButtonStyle({
   Color? hoverBackground,
   Color? borderColor,
   EdgeInsetsGeometry? padding,
-  double minHeight = AppSpacing.controlHeight,
+  double? minHeight,
 }) {
   final fontFamily = AppTypography.fontFamilyOf(context);
+  final height = minHeight ?? AppSpacing.controlHeightOf(context);
   return ButtonStyle(
     foregroundColor: WidgetStateProperty.resolveWith((states) {
       if (states.contains(WidgetState.disabled)) {
@@ -42,9 +43,9 @@ ButtonStyle _gfButtonStyle({
           ? BorderSide(color: borderColor)
           : BorderSide.none;
     }),
-    minimumSize: WidgetStatePropertyAll(Size(0, minHeight)),
-    maximumSize: WidgetStatePropertyAll(Size(double.infinity, minHeight)),
-    fixedSize: WidgetStatePropertyAll(Size.fromHeight(minHeight)),
+    minimumSize: WidgetStatePropertyAll(Size(0, height)),
+    maximumSize: WidgetStatePropertyAll(Size(double.infinity, height)),
+    fixedSize: WidgetStatePropertyAll(Size.fromHeight(height)),
     tapTargetSize: MaterialTapTargetSize.shrinkWrap,
     visualDensity: VisualDensity.compact,
     padding: WidgetStatePropertyAll(
@@ -98,7 +99,7 @@ class GfPrimaryButton extends StatelessWidget {
         foreground: AppColors.onPrimary,
         background: AppColors.primary,
         hoverBackground: AppColors.primaryHover,
-        minHeight: compact ? 36 : AppSpacing.controlHeight,
+        minHeight: compact ? 36 : null,
         padding: compact
             ? const EdgeInsets.symmetric(horizontal: 10)
             : null,
@@ -153,7 +154,7 @@ class GfSecondaryButton extends StatelessWidget {
             : AppColors.textPrimary,
         background: Colors.transparent,
         borderColor: AppColors.secondaryBorder,
-        minHeight: compact ? 36 : AppSpacing.controlHeight,
+        minHeight: compact ? 36 : null,
         padding: compact
             ? const EdgeInsets.symmetric(horizontal: 10)
             : null,
@@ -202,7 +203,7 @@ class GfDangerButton extends StatelessWidget {
         foreground: AppColors.error,
         background: AppColors.dangerZoneBg,
         borderColor: AppColors.dangerZoneBorder,
-        minHeight: compact ? 36 : AppSpacing.controlHeight,
+        minHeight: compact ? 36 : null,
         padding: compact
             ? const EdgeInsets.symmetric(horizontal: 10)
             : null,
@@ -221,7 +222,7 @@ class GfIconButton extends StatelessWidget {
     required this.icon,
     this.onPressed,
     this.tooltip,
-    this.size = AppSpacing.controlHeight,
+    this.size,
     this.iconSize = 20,
     this.color,
     this.backgroundColor,
@@ -231,7 +232,8 @@ class GfIconButton extends StatelessWidget {
   final IconData icon;
   final VoidCallback? onPressed;
   final String? tooltip;
-  final double size;
+  /// Defaults to [AppSpacing.controlHeightOf].
+  final double? size;
   final double iconSize;
   final Color? color;
   final Color? backgroundColor;
@@ -239,6 +241,7 @@ class GfIconButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final resolvedSize = size ?? AppSpacing.controlHeightOf(context);
     final button = Material(
       color: backgroundColor ?? Colors.transparent,
       borderRadius: AppRadius.button,
@@ -247,8 +250,8 @@ class GfIconButton extends StatelessWidget {
         borderRadius: AppRadius.button,
         hoverColor: AppColors.hover,
         child: Container(
-          width: size,
-          height: size,
+          width: resolvedSize,
+          height: resolvedSize,
           alignment: Alignment.center,
           decoration: BoxDecoration(
             borderRadius: AppRadius.button,

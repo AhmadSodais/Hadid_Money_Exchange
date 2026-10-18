@@ -19,8 +19,9 @@ class ThemeModeToggle extends StatelessWidget {
     final isLight = context.select<AppSettingsProvider, bool>(
       (s) => s.isLightMode,
     );
+    final controlH = AppSpacing.controlHeightOf(context);
     return Container(
-      height: AppSpacing.controlHeight,
+      height: controlH,
       padding: const EdgeInsets.all(3),
       decoration: BoxDecoration(
         color: AppColors.card,
@@ -34,12 +35,14 @@ class ThemeModeToggle extends StatelessWidget {
             mode: ThemeMode.light,
             selected: isLight,
             tooltip: 'settings.lightMode'.tr(),
+            size: controlH - 8,
           ),
           const SizedBox(width: 2),
           _ThemeIconButton(
             mode: ThemeMode.dark,
             selected: !isLight,
             tooltip: 'settings.darkMode'.tr(),
+            size: controlH - 8,
           ),
         ],
       ),
@@ -52,11 +55,13 @@ class _ThemeIconButton extends StatelessWidget {
     required this.mode,
     required this.selected,
     required this.tooltip,
+    required this.size,
   });
 
   final ThemeMode mode;
   final bool selected;
   final String tooltip;
+  final double size;
 
   static const Color _sunColor = Color(0xFFE8A317);
 
@@ -100,8 +105,8 @@ class _ThemeIconButton extends StatelessWidget {
             child: AnimatedContainer(
               duration: AppDurations.normal,
               curve: Curves.easeOut,
-              width: AppSpacing.controlHeight - 8,
-              height: AppSpacing.controlHeight - 8,
+              width: size,
+              height: size,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 color: selected

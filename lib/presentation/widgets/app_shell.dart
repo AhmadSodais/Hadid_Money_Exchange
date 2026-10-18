@@ -11,6 +11,8 @@ import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_spacing.dart';
 import '../../core/theme/app_typography.dart';
 import '../../core/utils/gf_breakpoints.dart';
+import '../../core/utils/gf_scale.dart';
+import '../../core/widgets/gf_fit_text.dart';
 import '../../core/widgets/gf_responsive.dart';
 import '../../core/widgets/gf_scroll_behavior.dart';
 import '../../core/widgets/gf_search_field.dart';
@@ -156,6 +158,7 @@ class _AppShellState extends State<AppShell> {
     return LayoutBuilder(
       builder: (context, constraints) {
         final windowWidth = constraints.maxWidth;
+        final uiScale = GfScale.of(context);
         final useDrawer = windowWidth < GfBreakpoints.sidebarAsDrawer;
         final forceCollapsed =
             !useDrawer && windowWidth < GfBreakpoints.sidebarAutoCollapse;
@@ -169,7 +172,8 @@ class _AppShellState extends State<AppShell> {
                       ? AppSpacing.sidebarCollapsed
                       : AppSpacing.sidebarExpanded);
         final layoutSize = GfBreakpoints.ofWidth(contentWidth);
-        final metrics = GfBreakpoints.metricsFor(layoutSize);
+        final metrics =
+            GfBreakpoints.metricsFor(layoutSize, uiScale: uiScale);
 
         return GfLayoutScope(
           size: layoutSize,
@@ -298,25 +302,22 @@ class ShellTopBar extends StatelessWidget {
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
+                GfFitText(
                   title,
                   style: AppTypography.localize(
                     AppTypography.pageTitle,
                     context: context,
                   ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
                 ),
                 if (subtitle != null) ...[
                   const SizedBox(height: 4),
-                  Text(
+                  GfFitText(
                     subtitle!,
                     style: AppTypography.localize(
                       AppTypography.subtitle,
                       context: context,
                     ),
                     maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
                   ),
                 ],
               ],

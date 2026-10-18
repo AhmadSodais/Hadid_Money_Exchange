@@ -92,7 +92,7 @@ Settlement "Cash" moves the drawer. Settlement "Customer" moves the customer's a
 
 ### Opening customer balance (once per customer and currency)
 
-Positive (exchange owes the customer): `Dr 3100 / Cr Customer`. Negative: `Dr Customer / Cr 3100`.
+Positive (exchange owes the customer — طلب مشتری): the funds are treated as cash already held in the selected drawer, same as a receipt: `Dr Cash / Cr Customer`. Negative (customer owes the exchange — بدهی مشتری): `Dr Customer / Cr 3100`.
 
 ### Cash adjustment (reconciliation difference)
 

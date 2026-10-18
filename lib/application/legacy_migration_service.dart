@@ -419,7 +419,16 @@ final class LegacyMigrationService {
     }
     final drawers = await _app.catalog.drawers();
     final drawer = drawerId ?? (drawers.where((d) => d.isActive).firstOrNull?.id);
-    if (includeCash && drawer == null) {
+    // Positive customer openings debit cash, so a drawer is required whenever
+    // any customer holds a credit balance (and whenever legacy cash is imported).
+    final cashFromCustomers = <String, int>{};
+    for (final c in analysis.customers) {
+      if (c.isWalkIn) continue;
+      for (final MapEntry(key: cur, value: minor) in c.balances.entries) {
+        if (minor > 0) cashFromCustomers[cur] = (cashFromCustomers[cur] ?? 0) + minor;
+      }
+    }
+    if ((includeCash || cashFromCustomers.isNotEmpty) && drawer == null) {
       throw const ValidationError('legacy.noDrawer', 'هیچ صندوق فعالی برای ثبت موجودی نقد وجود ندارد.');
     }
 
@@ -446,6 +455,7 @@ final class LegacyMigrationService {
               customerId: record.id,
               currency: cur,
               signedMinor: minor,
+              drawerId: minor > 0 ? drawer : null,
               description: 'مانده منتقل‌شده از برنامه قبلی',
             ),
             actor,
@@ -464,15 +474,26 @@ final class LegacyMigrationService {
       }
 
       if (includeCash) {
+        // Customer credit openings already increased cash; post only the
+        // residual so the vault matches the legacy physical count.
         for (final cash in analysis.cash.values) {
           if (cash.amountMinor == 0) continue;
+          final alreadyInCash = cashFromCustomers[cash.currency] ?? 0;
+          final residual = cash.amountMinor - alreadyInCash;
+          if (residual < 0) {
+            throw ValidationError(
+              'legacy.cashLessThanLiabilities',
+              'موجودی نقد ${cash.currency} برنامه قبلی از مجموع طلب مشتریان کمتر است؛ انتقال ممکن نیست.',
+            );
+          }
+          if (residual == 0) continue;
           await _app.posting.post(
             OpeningCashCommand(
               idempotencyKey: '$keyPrefix-CASH-${cash.currency}',
               effectiveDate: date,
               drawerId: drawer!,
               currency: cash.currency,
-              amountMinor: cash.amountMinor,
+              amountMinor: residual,
               description: 'موجودی نقد منتقل‌شده از بیلانس ${cash.legacyDate} برنامه قبلی',
             ),
             actor,

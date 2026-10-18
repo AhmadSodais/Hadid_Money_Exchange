@@ -174,8 +174,9 @@ class _ShamsiDatePickerDialogState extends State<_ShamsiDatePickerDialog> {
 
   @override
   Widget build(BuildContext context) {
+    // Keep accessibility scaling; allow downscale from [GfScaleHost].
     final textScale = MediaQuery.textScalerOf(context).clamp(
-      minScaleFactor: 1.0,
+      minScaleFactor: 0.78,
       maxScaleFactor: 1.3,
     );
 
@@ -841,7 +842,7 @@ class GfShamsiDateField extends StatelessWidget {
         ),
         const SizedBox(height: AppSpacing.xs),
         SizedBox(
-          height: AppSpacing.controlHeight,
+          height: AppSpacing.controlHeightOf(context),
           child: OutlinedButton(
             onPressed: () async {
               final picked = await AppCalendar.pickDate(

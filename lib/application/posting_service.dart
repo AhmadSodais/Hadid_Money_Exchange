@@ -672,6 +672,7 @@ final class PostingService {
       case OpeningCustomerCommand x:
         row.addAll({
           'customer_id': x.customerId,
+          'drawer_id': x.drawerId,
           'source_currency': x.currency,
           'source_amount_minor': x.signedMinor.abs(),
           'signed_amount_minor': x.signedMinor,
@@ -791,6 +792,7 @@ final class PostingService {
         PaymentCommand x => x.drawerId,
         ExchangeCommand x => x.drawerId,
         OpeningCashCommand x => x.drawerId,
+        OpeningCustomerCommand x => x.drawerId,
         CashAdjustmentCommand x => x.drawerId,
         ExpenseCommand x => x.drawerId,
         _ => null,

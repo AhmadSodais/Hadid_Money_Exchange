@@ -188,16 +188,28 @@ final class PostingRules {
     _namedCustomer(c.customerId, 'بیلانس افتتاحیه');
     final amount = c.signedMinor.abs();
     final customer = CustomerAccountRef(c.customerId);
+    // Positive: customer deposited funds the exchange holds — same as a
+    // receipt (cash in vault rises, customer position rises).
+    if (c.signedMinor > 0) {
+      final drawerId = c.drawerId;
+      if (drawerId == null) {
+        throw const ValidationError('drawer.required',
+            'برای بیلانس افتتاحیه طلب مشتری باید صندوق انتخاب شود.',
+            field: 'drawer');
+      }
+      return PostingPlan(
+        journal: JournalDraft([
+          JournalLineDraft.debit(CashAccountRef(drawerId), c.currency, amount),
+          JournalLineDraft.credit(customer, c.currency, amount),
+        ]),
+      );
+    }
+    // Negative: customer owes the exchange (receivable) — no cash movement.
     return PostingPlan(
-      journal: JournalDraft(c.signedMinor > 0
-          ? [
-              JournalLineDraft.debit(_openingEquity, c.currency, amount),
-              JournalLineDraft.credit(customer, c.currency, amount),
-            ]
-          : [
-              JournalLineDraft.debit(customer, c.currency, amount),
-              JournalLineDraft.credit(_openingEquity, c.currency, amount),
-            ]),
+      journal: JournalDraft([
+        JournalLineDraft.debit(customer, c.currency, amount),
+        JournalLineDraft.credit(_openingEquity, c.currency, amount),
+      ]),
     );
   }
 

@@ -18,6 +18,7 @@ import '../../domain/security/permissions.dart';
 import '../../domain/shared/business_date.dart';
 import '../../domain/transactions/financial_command.dart';
 import '../format/money_format.dart';
+import '../providers/app_settings_provider.dart';
 import '../session/app_session.dart';
 import '../widgets/app_shell.dart';
 import '../widgets/exchange_ui.dart';
@@ -541,10 +542,19 @@ class _SignedAmountDialogState extends State<_SignedAmountDialog> {
   final _amount = TextEditingController();
   final _reason = TextEditingController();
   Currency? _currency;
+  int? _drawerId;
   bool _owedToCustomer = true;
   BusinessDate _date = BusinessDate.today();
   bool _saving = false;
   final String _key = PostingService.newIdempotencyKey();
+
+  @override
+  void initState() {
+    super.initState();
+    final drawers = context.read<AppSession>().activeDrawers;
+    final selected = context.read<AppSettingsProvider>().selectedDrawerId;
+    _drawerId = drawers.any((d) => d.id == selected) ? selected : drawers.firstOrNull?.id;
+  }
 
   @override
   void dispose() {
@@ -564,6 +574,10 @@ class _SignedAmountDialogState extends State<_SignedAmountDialog> {
       GfToast.error(context, 'مبلغ معتبر نیست.');
       return;
     }
+    if (!widget.adjustment && _owedToCustomer && _drawerId == null) {
+      GfToast.error(context, 'صندوق را انتخاب کنید.');
+      return;
+    }
     final signed = _owedToCustomer ? minor : -minor;
     final FinancialCommand cmd = widget.adjustment
         ? CustomerAdjustmentCommand(
@@ -581,6 +595,7 @@ class _SignedAmountDialogState extends State<_SignedAmountDialog> {
             customerId: widget.customer.id,
             currency: currency.code,
             signedMinor: signed,
+            drawerId: _owedToCustomer ? _drawerId : null,
           );
     setState(() => _saving = true);
     final s = context.read<AppSession>();
@@ -596,6 +611,7 @@ class _SignedAmountDialogState extends State<_SignedAmountDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final needsDrawer = !widget.adjustment && _owedToCustomer;
     return GfDialogShell(
       icon: widget.adjustment ? Icons.tune : Icons.flag_outlined,
       iconColor: AppColors.primary,
@@ -618,6 +634,16 @@ class _SignedAmountDialogState extends State<_SignedAmountDialog> {
               BusinessDateField(value: _date, onChanged: (d) => setState(() => _date = d)),
             ],
           ),
+          if (needsDrawer) ...[
+            const SizedBox(height: 14),
+            DrawerPicker(
+              value: _drawerId,
+              onChanged: (id) {
+                setState(() => _drawerId = id);
+                context.read<AppSettingsProvider>().setSelectedDrawerId(id);
+              },
+            ),
+          ],
           const SizedBox(height: 14),
           Text('جهت مانده', style: AppTypography.label),
           const SizedBox(height: 6),
@@ -644,7 +670,9 @@ class _SignedAmountDialogState extends State<_SignedAmountDialog> {
           DialogInfoBanner(
             message: widget.adjustment
                 ? 'اصلاح با سند حسابداری مجزا و دلیل ثبت می‌شود و در سوابق ممیزی باقی می‌ماند.'
-                : 'بیلانس افتتاحیه برای هر ارز فقط یک بار ثبت می‌شود (مگر پس از برگشت).',
+                : needsDrawer
+                    ? 'طلب مشتری به معنی وجه موجود نزد صرافی است؛ مبلغ همزمان به حساب مشتری و موجودی صندوق اضافه می‌شود. برای هر ارز فقط یک بار ثبت می‌شود (مگر پس از برگشت).'
+                    : 'بیلانس افتتاحیه برای هر ارز فقط یک بار ثبت می‌شود (مگر پس از برگشت).',
           ),
         ],
       ),

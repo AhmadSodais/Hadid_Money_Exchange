@@ -5,6 +5,7 @@ import '../theme/app_colors.dart';
 import '../theme/app_radius.dart';
 import '../theme/app_spacing.dart';
 import '../theme/app_typography.dart';
+import 'gf_fit_text.dart';
 
 enum GfKpiTone { normal, warning, error }
 
@@ -90,13 +91,11 @@ class GfKpiCard extends StatelessWidget {
           Row(
             children: [
               Expanded(
-                child: Text(
+                child: GfFitText(
                   title,
                   style: multi
                       ? AppTypography.bodySemiBold.copyWith(fontSize: 16)
                       : AppTypography.label.copyWith(fontSize: 11),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
                 ),
               ),
               if (icon != null) ...[

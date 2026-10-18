@@ -323,7 +323,7 @@ class _GfDropdownState<T> extends State<GfDropdown<T>>
               ],
               SizedBox(
                 width: widget.width,
-                height: widget.height ?? AppSpacing.controlHeight,
+                height: widget.height ?? AppSpacing.controlHeightOf(context),
                 child: Material(
                   color: AppColors.input,
                   borderRadius: AppRadius.input,

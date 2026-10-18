@@ -16,6 +16,7 @@ import '../../core/theme/app_radius.dart';
 import '../../core/theme/app_shadows.dart';
 import '../../core/theme/app_spacing.dart';
 import '../../core/theme/app_typography.dart';
+import '../../core/widgets/gf_fit_text.dart';
 import '../../core/widgets/gf_scroll_behavior.dart';
 import '../../core/widgets/gf_toast.dart';
 import '../../domain/security/permissions.dart';
@@ -154,6 +155,8 @@ class GlassFlowSidebar extends StatelessWidget {
     return AnimatedContainer(
       duration: duration,
       curve: Curves.easeOutCubic,
+      // Keep sidebar widths unscaled — collapsed chrome (logo + padding) has a
+      // hard minimum that breaks when width tracks [GfScale].
       width: inDrawer
           ? double.infinity
           : (collapsed
@@ -321,7 +324,7 @@ class _BrandHeader extends StatelessWidget {
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(15),
         gradient: LinearGradient(
-          begin: Alignment.topLeft, 
+          begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
             AppColors.primary.withValues(
@@ -332,58 +335,63 @@ class _BrandHeader extends StatelessWidget {
             ),
           ],
         ),
-        border: Border.all(color: AppColors.primary.withValues(alpha: 0.22))
+        border: Border.all(color: AppColors.primary.withValues(alpha: 0.22)),
       ),
-      child: Row(
-        children: [
-          if (!showLabels) const Spacer(),
-          _AppLogoMark(size: showLabels ? 42 : 36),
-          if (showLabels) ...[
-            const SizedBox(width: 12),
-            Expanded(
-              child: AnimatedOpacity(
-                opacity: showLabels ? 1 : 0,
-                duration: duration,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      AppConstants.appName,
-                      style:
-                          AppTypography.localize(
-                            AppTypography.brand,
-                            context: context,
-                          ).copyWith(
-                            fontSize: 17,
-                            letterSpacing: 0.2,
-                            height: 1.15,
-                          ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      'صرافی و حسابداری ارز',
-                      style:
-                          AppTypography.localize(
-                            AppTypography.caption,
-                            context: context,
-                          ).copyWith(
-                            color: AppColors.textSecondary,
-                            fontSize: 11,
-                            height: 1.2,
-                          ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
+      // Mid-collapse widths can be narrower than the logo; size to fit.
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final logoSize = showLabels
+              ? 42.0
+              : constraints.maxWidth.clamp(20.0, 36.0);
+          if (!showLabels) {
+            return Center(
+              child: _AppLogoMark(size: logoSize),
+            );
+          }
+          return Row(
+            children: [
+              _AppLogoMark(size: logoSize),
+              const SizedBox(width: 12),
+              Expanded(
+                child: AnimatedOpacity(
+                  opacity: 1,
+                  duration: duration,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      GfFitText(
+                        AppConstants.appName,
+                        style:
+                            AppTypography.localize(
+                              AppTypography.brand,
+                              context: context,
+                            ).copyWith(
+                              fontSize: 17,
+                              letterSpacing: 0.2,
+                              height: 1.15,
+                            ),
+                      ),
+                      const SizedBox(height: 2),
+                      GfFitText(
+                        'صرافی و حسابداری ارز',
+                        style:
+                            AppTypography.localize(
+                              AppTypography.caption,
+                              context: context,
+                            ).copyWith(
+                              color: AppColors.textSecondary,
+                              fontSize: 11,
+                              height: 1.2,
+                            ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
-            ),
-          ] else
-            const Spacer(),
-        ],
+            ],
+          );
+        },
       ),
     );
   }
@@ -763,10 +771,8 @@ class _NavTileState extends State<_NavTile> with TickerProviderStateMixin {
                                   opacity: _labelFadeAnim,
                                   child: Align(
                                     alignment: labelAlign,
-                                    child: Text(
+                                    child: GfFitText(
                                       widget.item.label,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
                                       textAlign: textAlign,
                                       style: AppTypography.bodyMedium.copyWith(
                                         color: selected
@@ -891,17 +897,13 @@ class _UserSessionTile extends StatelessWidget {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
+                          GfFitText(
                             displayName,
                             style: AppTypography.bodyMedium,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
                           ),
-                          Text(
+                          GfFitText(
                             roleLine,
                             style: AppTypography.caption,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
                           ),
                         ],
                       ),

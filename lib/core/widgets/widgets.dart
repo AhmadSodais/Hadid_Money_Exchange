@@ -1,5 +1,6 @@
 export '../keyboard/gf_keyboard.dart';
 export '../utils/gf_breakpoints.dart';
+export '../utils/gf_scale.dart';
 export 'gf_action_menu.dart';
 export 'gf_button.dart';
 export 'gf_card.dart';
@@ -10,6 +11,7 @@ export 'gf_date_filter.dart';
 export 'gf_dialog_shell.dart';
 export 'gf_dropdown.dart';
 export 'gf_empty_state.dart';
+export 'gf_fit_text.dart';
 export 'gf_image.dart';
 export 'gf_kpi_card.dart';
 export 'gf_loader.dart';

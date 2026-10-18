@@ -76,7 +76,7 @@ class GfDataTable extends StatefulWidget {
     this.clientSide = false,
     this.itemLabel,
     this.minWidth,
-    this.rowHeight = AppSpacing.tableRowHeight,
+    this.rowHeight,
     this.showRowNumbers = true,
   });
 
@@ -101,7 +101,8 @@ class GfDataTable extends StatefulWidget {
   final bool clientSide;
   final String? itemLabel;
   final double? minWidth;
-  final double rowHeight;
+  /// Defaults to [AppSpacing.tableRowHeightOf].
+  final double? rowHeight;
   /// When true, prepends a 1-based row index column on every page.
   final bool showRowNumbers;
 
@@ -234,6 +235,8 @@ class _GfDataTableState extends State<GfDataTable> {
   @override
   Widget build(BuildContext context) {
     final locale = context.locale;
+    final rowHeight =
+        widget.rowHeight ?? AppSpacing.tableRowHeightOf(context);
     final pageSize = _pageSize;
     final totalItems = _effectiveTotal;
     final pages = GfPagination.totalPages(totalItems: totalItems, pageSize: pageSize);
@@ -390,10 +393,13 @@ class _GfDataTableState extends State<GfDataTable> {
                   Expanded(
                     child: LayoutBuilder(
                       builder: (context, bodyConstraints) {
+                        // Leave a 1px slack so floor(height/row) * row never
+                        // paints past the viewport (fractional layout).
                         final capacity =
                             GfPagination.rowsPerPageFromHeight(
-                          bodyHeight: bodyConstraints.maxHeight,
-                          rowHeight: widget.rowHeight,
+                          bodyHeight:
+                              math.max(0, bodyConstraints.maxHeight - 1),
+                          rowHeight: rowHeight,
                         );
                         _reportCapacity(capacity);
 
@@ -403,24 +409,26 @@ class _GfDataTableState extends State<GfDataTable> {
                           return const SizedBox.shrink();
                         }
 
-                        return GfArrowFocusGroup(
-                          includeHorizontal: false,
-                          child: ListView.builder(
-                            padding: EdgeInsets.zero,
-                            physics: const NeverScrollableScrollPhysics(),
-                            itemExtent: widget.rowHeight,
-                            itemCount: renderCount,
-                            itemBuilder: (context, i) {
-                              final dataIndex = widget.clientSide
-                                  ? indexOffset + i
-                                  : i;
-                              final rowNumber = indexOffset + i + 1;
-                              final row = widget.rowBuilder(
-                                context,
-                                dataIndex,
-                              );
-                              return _withRowNumber(row, rowNumber);
-                            },
+                        return ClipRect(
+                          child: GfArrowFocusGroup(
+                            includeHorizontal: false,
+                            child: ListView.builder(
+                              padding: EdgeInsets.zero,
+                              physics: const NeverScrollableScrollPhysics(),
+                              itemExtent: rowHeight,
+                              itemCount: renderCount,
+                              itemBuilder: (context, i) {
+                                final dataIndex = widget.clientSide
+                                    ? indexOffset + i
+                                    : i;
+                                final rowNumber = indexOffset + i + 1;
+                                final row = widget.rowBuilder(
+                                  context,
+                                  dataIndex,
+                                );
+                                return _withRowNumber(row, rowNumber);
+                              },
+                            ),
                           ),
                         );
                       },
@@ -465,7 +473,9 @@ class _GfDataTableState extends State<GfDataTable> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      Expanded(child: bodyChild),
+                      Expanded(
+                        child: ClipRect(child: bodyChild),
+                      ),
                       if (_showPagination)
                         GfPaginationBar(
                           page: currentPage,
@@ -575,13 +585,14 @@ class GfTableRow extends StatefulWidget {
     super.key,
     required this.children,
     this.onTap,
-    this.height = AppSpacing.tableRowHeight,
+    this.height,
     this.selected = false,
   });
 
   final List<Widget> children;
   final VoidCallback? onTap;
-  final double height;
+  /// Defaults to [AppSpacing.tableRowHeightOf].
+  final double? height;
   final bool selected;
 
   @override
@@ -616,6 +627,7 @@ class _GfTableRowState extends State<GfTableRow> {
         ? AppColors.surface
         : (AppColors.isLight ? AppColors.card : Colors.transparent);
     final showCellFocus = _focused && widget.children.length > 1;
+    final height = widget.height ?? AppSpacing.tableRowHeightOf(context);
 
     return FocusableActionDetector(
       mouseCursor: widget.onTap != null
@@ -659,7 +671,7 @@ class _GfTableRowState extends State<GfTableRow> {
           onTap: widget.onTap,
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 120),
-            height: widget.height,
+            height: height,
             padding: const EdgeInsets.symmetric(horizontal: 16),
             decoration: BoxDecoration(
               color: _hover || _focused ? AppColors.rowHover : base,

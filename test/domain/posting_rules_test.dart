@@ -189,7 +189,7 @@ void main() {
       expect(netBy(p.journal, cash), {'USD': 10000, 'AFN': -695000});
     });
 
-    test('opening customer balance: sign follows customer-position convention', () {
+    test('opening customer balance: credit posts cash; debit posts equity', () {
       final owes = rules.plan(OpeningCustomerCommand(
           idempotencyKey: 'k',
           effectiveDate: date,
@@ -197,13 +197,24 @@ void main() {
           currency: 'AFN',
           signedMinor: -80000));
       expect(netBy(owes.journal, const CustomerAccountRef(5)), {'AFN': 80000}); // debit
+      expect(netBy(owes.journal, const SystemAccountRef(AccountRole.openingEquity)), {'AFN': -80000});
       final owed = rules.plan(OpeningCustomerCommand(
           idempotencyKey: 'k',
           effectiveDate: date,
           customerId: 5,
           currency: 'AFN',
-          signedMinor: 80000));
+          signedMinor: 80000,
+          drawerId: 1));
       expect(netBy(owed.journal, const CustomerAccountRef(5)), {'AFN': -80000}); // credit
+      expect(netBy(owed.journal, const CashAccountRef(1)), {'AFN': 80000}); // cash in
+      expect(
+          () => rules.plan(OpeningCustomerCommand(
+              idempotencyKey: 'k',
+              effectiveDate: date,
+              customerId: 5,
+              currency: 'AFN',
+              signedMinor: 80000)),
+          throwsA(isA<ValidationError>()));
     });
 
     test('adjustments require a reason; zero amounts rejected', () {

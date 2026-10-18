@@ -115,13 +115,53 @@ class _JournalPageState extends State<JournalPage> with RevisionReload {
     );
   }
 
-  /// Just the main amount; rate, counter amount, and the rest are in the
-  /// detail dialog.
-  String _details(PostedTransaction t, AppSession s) {
+  /// Positive = money in / won; negative = money out / lost. Buy/sell use the
+  /// traded (source) side. Rate and counter amount stay in the detail dialog.
+  int? _signedDetailMinor(PostedTransaction t) {
+    final source = t.sourceAmountMinor;
+    return switch (t.type) {
+      TransactionType.receipt ||
+      TransactionType.openingCash ||
+      TransactionType.buy =>
+        source,
+      TransactionType.payment ||
+      TransactionType.expense ||
+      TransactionType.sell =>
+        source == null ? null : -source,
+      TransactionType.openingCustomer ||
+      TransactionType.customerAdjustment ||
+      TransactionType.cashAdjustment =>
+        t.signedAmountMinor ?? source,
+      TransactionType.reversal => source == null ? null : -source.abs(),
+    };
+  }
+
+  Widget _details(PostedTransaction t, AppSession s) {
+    final signed = _signedDetailMinor(t);
+    if (signed == null) {
+      return Text(
+        t.description ?? '—',
+        style: AppTypography.body.copyWith(color: AppColors.textMuted),
+      );
+    }
     final src = s.currency(t.sourceCurrency);
-    final amount = t.signedAmountMinor ?? t.sourceAmountMinor;
-    if (amount != null) return MoneyFormat.withName(amount, src, fallbackCode: t.sourceCurrency);
-    return t.description ?? '—';
+    final sign = signed > 0 ? '+' : (signed < 0 ? '−' : '');
+    final color = !t.isActive
+        ? AppColors.textMuted
+        : signed > 0
+            ? AppColors.success
+            : signed < 0
+                ? AppColors.error
+                : AppColors.textPrimary;
+    return Text(
+      '$sign${MoneyFormat.withName(signed.abs(), src, fallbackCode: t.sourceCurrency)}',
+      textDirection: TextDirection.ltr,
+      style: AppTypography.bodySemiBold.copyWith(
+        color: color,
+        decoration: t.status == TransactionStatus.reversed ? TextDecoration.lineThrough : null,
+        fontFeatures: const [FontFeature.tabularFigures()],
+      ),
+    );
   }
 
   @override
@@ -168,60 +208,73 @@ class _JournalPageState extends State<JournalPage> with RevisionReload {
               emptyText: 'معامله‌ای یافت نشد.',
               emptyHint: 'بازه تاریخ یا فیلترها را تغییر دهید.',
               actions: [
-                // One action keeps the table from stacking the controls under the title.
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    GfMenuFilter<_TypeFilter>(
-                      value: _typeFilter,
-                      width: 170,
-                      options: [
-                        for (final f in _TypeFilter.values)
-                          GfMenuFilterOption(value: f, label: f.label, icon: f.icon, subtitle: f.hint),
-                      ],
-                      onChanged: (f) {
-                        setState(() => _typeFilter = f);
-                        _refilter();
-                      },
-                    ),
-                    const SizedBox(width: AppSpacing.sm),
-                    GfMenuFilter<_View>(
-                      value: _view,
-                      width: 210,
-                      options: [
-                        for (final v in _View.values)
-                          GfMenuFilterOption(value: v, label: v.label, icon: v.icon, subtitle: v.hint),
-                      ],
-                      onChanged: (v) {
-                        setState(() => _view = v);
-                        _refilter();
-                      },
-                    ),
-                    const SizedBox(width: AppSpacing.sm),
-                    GfMenuFilter<String?>(
-                      value: _currency?.code,
-                      width: 160,
-                      options: [
-                        const GfMenuFilterOption(
-                          value: null,
-                          label: 'همه ارزها',
-                          icon: Icons.public_rounded,
-                          subtitle: 'معاملات همه ارزها',
-                        ),
-                        for (final c in s.activeCurrencies)
-                          GfMenuFilterOption(
-                            value: c.code,
-                            label: c.nameFa,
-                            icon: Icons.payments_outlined,
-                            subtitle: c.code,
+                // Scroll when filters are wider than the title action slot.
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      GfMenuFilter<_TypeFilter>(
+                        value: _typeFilter,
+                        width: 170,
+                        options: [
+                          for (final f in _TypeFilter.values)
+                            GfMenuFilterOption(
+                              value: f,
+                              label: f.label,
+                              icon: f.icon,
+                              subtitle: f.hint,
+                            ),
+                        ],
+                        onChanged: (f) {
+                          setState(() => _typeFilter = f);
+                          _refilter();
+                        },
+                      ),
+                      const SizedBox(width: AppSpacing.sm),
+                      GfMenuFilter<_View>(
+                        value: _view,
+                        width: 210,
+                        options: [
+                          for (final v in _View.values)
+                            GfMenuFilterOption(
+                              value: v,
+                              label: v.label,
+                              icon: v.icon,
+                              subtitle: v.hint,
+                            ),
+                        ],
+                        onChanged: (v) {
+                          setState(() => _view = v);
+                          _refilter();
+                        },
+                      ),
+                      const SizedBox(width: AppSpacing.sm),
+                      GfMenuFilter<String?>(
+                        value: _currency?.code,
+                        width: 160,
+                        options: [
+                          const GfMenuFilterOption(
+                            value: null,
+                            label: 'همه ارزها',
+                            icon: Icons.public_rounded,
+                            subtitle: 'معاملات همه ارزها',
                           ),
-                      ],
-                      onChanged: (code) {
-                        setState(() => _currency = s.currency(code));
-                        _refilter();
-                      },
-                    ),
-                  ],
+                          for (final c in s.activeCurrencies)
+                            GfMenuFilterOption(
+                              value: c.code,
+                              label: c.nameFa,
+                              icon: Icons.payments_outlined,
+                              subtitle: c.code,
+                            ),
+                        ],
+                        onChanged: (code) {
+                          setState(() => _currency = s.currency(code));
+                          _refilter();
+                        },
+                      ),
+                    ],
+                  ),
                 ),
               ],
               columns: const [
@@ -240,13 +293,7 @@ class _JournalPageState extends State<JournalPage> with RevisionReload {
                     Text(t.referenceNo, style: AppTypography.caption, textDirection: TextDirection.ltr),
                     TransactionTypeBadge(t.type),
                     Text(t.customerName ?? '—', style: AppTypography.body),
-                    Text(
-                      _details(t, s),
-                      style: AppTypography.body.copyWith(
-                        color: t.isActive ? null : AppColors.textMuted,
-                        decoration: t.status == TransactionStatus.reversed ? TextDecoration.lineThrough : null,
-                      ),
-                    ),
+                    _details(t, s),
                     Text(
                       TransactionActions.statusLabel(t),
                       style: AppTypography.caption.copyWith(

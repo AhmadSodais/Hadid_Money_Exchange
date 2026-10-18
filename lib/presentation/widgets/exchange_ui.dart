@@ -430,7 +430,7 @@ class _CompactLedgerTableState extends State<_CompactLedgerTable> {
             );
     } else {
       // The empty state also takes the pagination footer's slot.
-      final rowsHeight = fixedRows * AppSpacing.tableRowHeight;
+      final rowsHeight = fixedRows * AppSpacing.tableRowHeightOf(context);
       body = SizedBox(
         height: rowCount == 0 ? rowsHeight + GfPagination.footerMinHeight : rowsHeight,
         child: rowCount == 0
@@ -825,7 +825,7 @@ class CustomerPickerField extends StatelessWidget {
             if (picked != null) onSelected(picked);
           },
           child: Container(
-            height: AppSpacing.controlHeight,
+            height: AppSpacing.controlHeightOf(context),
             padding: const EdgeInsets.symmetric(horizontal: 12),
             decoration: BoxDecoration(
               color: AppColors.input,

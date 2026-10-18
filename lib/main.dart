@@ -19,6 +19,7 @@ import 'core/theme/app_theme.dart';
 import 'core/theme/app_typography.dart';
 import 'core/theme/day_night_transition.dart';
 import 'core/utils/app_calendar.dart';
+import 'core/utils/gf_scale.dart';
 import 'core/utils/shamsi_dates.dart';
 import 'core/utils/window_title_bar.dart';
 import 'core/widgets/gf_scroll_behavior.dart';
@@ -178,9 +179,11 @@ class HadidExchangeApp extends StatelessWidget {
         localizationsDelegates: delegates,
         supportedLocales: context.supportedLocales,
         locale: context.locale,
-        builder: (context, child) => DeviceAuthGate(
-          frame: (screen) => GfSnackbarHost(child: screen),
-          child: child ?? const SizedBox.shrink(),
+        builder: (context, child) => GfScaleHost(
+          child: DeviceAuthGate(
+            frame: (screen) => GfSnackbarHost(child: screen),
+            child: child ?? const SizedBox.shrink(),
+          ),
         ),
         home: _StartupErrorScreen(error: startupError ?? ''),
       );
@@ -240,13 +243,15 @@ class HadidExchangeApp extends StatelessWidget {
               ),
             );
 
-        return DeviceAuthGate(
-          frame: themed,
-          child: AppLockGate(
-            child: themed(
-              _StartupNotice(
-                warning: startupWarning,
-                child: child ?? const SizedBox.shrink(),
+        return GfScaleHost(
+          child: DeviceAuthGate(
+            frame: themed,
+            child: AppLockGate(
+              child: themed(
+                _StartupNotice(
+                  warning: startupWarning,
+                  child: child ?? const SizedBox.shrink(),
+                ),
               ),
             ),
           ),
