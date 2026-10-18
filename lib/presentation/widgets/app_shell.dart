@@ -275,10 +275,13 @@ class ShellTopBar extends StatelessWidget {
     return 460;
   }
 
+  /// Below this content width, header actions hide instead of wrapping under
+  /// the title when there is no search field (e.g. dashboard chrome toggles).
+  static const double _actionsHideBelow = 360;
+
   @override
   Widget build(BuildContext context) {
     final metrics = GfBreakpoints.metricsOf(context);
-    final pad = metrics.pagePadding;
     final padTop = metrics.pageVerticalPadding;
     final scope = GfLayoutScope.maybeOf(context);
     final showMenu = scope?.openDrawer != null;
@@ -329,7 +332,12 @@ class ShellTopBar extends StatelessWidget {
               )
             : null;
 
-        final actionsBar = actions.isEmpty
+        // Without a search field, keep actions on the title row. Only hide
+        // them when the bar is too narrow — never push them onto a second
+        // row while horizontal space is still available.
+        final showActions = actions.isNotEmpty &&
+            (searchField != null || width >= _actionsHideBelow);
+        final actionsBar = !showActions
             ? null
             : GfActionBar(alignment: WrapAlignment.end, children: actions);
 
@@ -340,24 +348,42 @@ class ShellTopBar extends StatelessWidget {
           color: AppColors.textPrimary,
         );
 
-        // Wide enough: title | capped search + actions on one toolbar row.
-        final singleRow =
-            width >= 1100 &&
-            (searchField == null || actionsBar == null || actions.length <= 2);
+        // One row when there is no search (title ellipsizes; actions stay).
+        // With search, require width so the field + actions can share a row.
+        final singleRow = searchField == null ||
+            (width >= 1100 &&
+                (actionsBar == null || actions.length <= 2));
 
-        Widget withExtra(EdgeInsets padding, Widget toolbar) {
+        Widget withExtra({
+          required double bottom,
+          required Widget toolbar,
+        }) {
           if (headerExtra == null) {
-            return Padding(padding: padding, child: toolbar);
+            return Padding(
+              padding: PageScaffold.pageHorizontalInsets(
+                context,
+                top: padTop,
+                bottom: bottom,
+              ),
+              child: toolbar,
+            );
           }
           return Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Padding(
-                padding: padding.copyWith(bottom: AppSpacing.sm),
+                padding: PageScaffold.pageHorizontalInsets(
+                  context,
+                  top: padTop,
+                  bottom: AppSpacing.sm,
+                ),
                 child: toolbar,
               ),
               Padding(
-                padding: EdgeInsets.fromLTRB(pad, 0, pad, AppSpacing.md),
+                padding: PageScaffold.pageHorizontalInsets(
+                  context,
+                  bottom: AppSpacing.md,
+                ),
                 child: headerExtra,
               ),
             ],
@@ -366,8 +392,8 @@ class ShellTopBar extends StatelessWidget {
 
         if (singleRow) {
           return withExtra(
-            EdgeInsets.fromLTRB(pad, padTop, pad, AppSpacing.md),
-            Row(
+            bottom: AppSpacing.md,
+            toolbar: Row(
               children: [
                 if (showMenu) ...[menuButton(), const SizedBox(width: 4)],
                 Expanded(child: titleBlock),
@@ -392,8 +418,8 @@ class ShellTopBar extends StatelessWidget {
             width < 560 && searchField != null && actionsBar != null;
 
         return withExtra(
-          EdgeInsets.fromLTRB(pad, padTop, pad, metrics.gridGap * 0.55),
-          Column(
+          bottom: metrics.gridGap * 0.55,
+          toolbar: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Row(
@@ -459,13 +485,38 @@ class PageScaffold extends StatelessWidget {
     this.padBody = true,
   });
 
+  /// Horizontal page insets. With a docked sidebar, the outer edge (away from
+  /// the rail) matches [AppSpacing.sidebarInset] so it aligns with the
+  /// sidebar's gap from the window edge; the inner edge keeps [pagePadding].
+  static EdgeInsetsGeometry pageHorizontalInsets(
+    BuildContext context, {
+    double top = 0,
+    double bottom = 0,
+  }) {
+    final metrics = GfBreakpoints.metricsOf(context);
+    final pad = metrics.pagePadding;
+    final scope = GfLayoutScope.maybeOf(context);
+    final dockedSidebar = scope != null && scope.openDrawer == null;
+    if (dockedSidebar) {
+      return EdgeInsetsDirectional.only(
+        start: pad,
+        end: AppSpacing.sidebarInset,
+        top: top,
+        bottom: bottom,
+      );
+    }
+    return EdgeInsets.fromLTRB(pad, top, pad, bottom);
+  }
+
   /// Page body padding. A page that scrolls its whole body should set
   /// [padBody] to `false` and pass this to its scroll view instead, so content
   /// scrolls to the page edges and the scrollbar sits in the margin.
-  static EdgeInsets pageBodyPadding(BuildContext context) {
+  static EdgeInsetsGeometry pageBodyPadding(BuildContext context) {
     final metrics = GfBreakpoints.metricsOf(context);
-    final pad = metrics.pagePadding;
-    return EdgeInsets.fromLTRB(pad, 0, pad, metrics.pageVerticalPadding);
+    return pageHorizontalInsets(
+      context,
+      bottom: metrics.pageVerticalPadding,
+    );
   }
 
   final String title;
