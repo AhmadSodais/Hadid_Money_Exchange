@@ -795,8 +795,8 @@ class BusinessDateField extends StatelessWidget {
   }
 }
 
-/// Shows the selected customer and opens a search dialog to change it.
-class CustomerPickerField extends StatelessWidget {
+/// Searchable customer dropdown used on receipts/payments and buy/sell forms.
+class CustomerPickerField extends StatefulWidget {
   const CustomerPickerField({
     super.key,
     required this.selected,
@@ -811,149 +811,96 @@ class CustomerPickerField extends StatelessWidget {
   final String label;
 
   @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text(label, style: AppTypography.label),
-        const SizedBox(height: 6),
-        InkWell(
-          borderRadius: AppRadius.input,
-          onTap: () async {
-            final picked = await CustomerSearchDialog.show(context, allowWalkIn: allowWalkIn);
-            if (picked != null) onSelected(picked);
-          },
-          child: Container(
-            height: AppSpacing.controlHeightOf(context),
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            decoration: BoxDecoration(
-              color: AppColors.input,
-              borderRadius: AppRadius.input,
-              border: Border.all(color: AppColors.inputBorder),
-            ),
-            child: Row(
-              children: [
-                Icon(Icons.person_search_outlined, size: 18, color: AppColors.textSecondary),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    selected == null ? 'انتخاب مشتری…' : '${selected!.name}  ·  ${selected!.code}',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: AppTypography.body.copyWith(
-                      color: selected == null ? AppColors.textMuted : AppColors.textPrimary,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ],
-    );
-  }
+  State<CustomerPickerField> createState() => _CustomerPickerFieldState();
 }
 
-class CustomerSearchDialog extends StatefulWidget {
-  const CustomerSearchDialog({super.key, required this.allowWalkIn});
-
-  final bool allowWalkIn;
-
-  static Future<CustomerRecord?> show(BuildContext context, {bool allowWalkIn = false}) {
-    return showDialog<CustomerRecord>(
-      context: context,
-      builder: (_) => ChangeNotifierProvider.value(
-        value: context.read<AppSession>(),
-        child: CustomerSearchDialog(allowWalkIn: allowWalkIn),
-      ),
-    );
-  }
+class _CustomerPickerFieldState extends State<CustomerPickerField> with RevisionReload {
+  List<CustomerRecord> _customers = const [];
+  bool _loading = true;
+  String? _error;
 
   @override
-  State<CustomerSearchDialog> createState() => _CustomerSearchDialogState();
-}
-
-class _CustomerSearchDialogState extends State<CustomerSearchDialog> {
-  final _query = TextEditingController();
-  List<CustomerRecord> _results = const [];
+  Future<void> reload() => _load();
 
   @override
-  void initState() {
-    super.initState();
-    _search('');
+  void didUpdateWidget(covariant CustomerPickerField oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.allowWalkIn != widget.allowWalkIn) _load();
   }
 
-  @override
-  void dispose() {
-    _query.dispose();
-    super.dispose();
+  Future<void> _load() async {
+    try {
+      final list = await session.services.customers.search(
+        '',
+        includeWalkIn: widget.allowWalkIn,
+        limit: 500,
+      );
+      if (!mounted) return;
+      setState(() {
+        _customers = list;
+        _loading = false;
+        _error = null;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = 'بارگذاری مشتریان ناموفق بود.';
+      });
+    }
   }
 
-  Future<void> _search(String q) async {
-    final session = context.read<AppSession>();
-    final list = await session.services.customers
-        .search(q, includeWalkIn: widget.allowWalkIn, limit: 100);
-    if (mounted) setState(() => _results = list);
+  String _label(CustomerRecord c) {
+    final parts = <String>[c.name, c.code];
+    if (c.phone != null && c.phone!.trim().isNotEmpty) parts.add(c.phone!);
+    return parts.join('  ·  ');
   }
 
   @override
   Widget build(BuildContext context) {
-    return GfDialogShell(
-      icon: Icons.person_search_outlined,
-      iconColor: AppColors.primary,
-      title: 'جستجوی مشتری',
-      subtitle: 'برای انتخاب، روی مشتری کلیک کنید.',
-      cancelLabel: 'بستن',
-      onCancel: () => Navigator.of(context).pop(),
-      maxWidth: 480,
-      maxHeight: 600,
-      fixedHeight: true,
-      scrollBody: false,
-      body: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          GfTextField(
-            controller: _query,
-            autofocus: true,
-            hint: 'نام، شماره تماس، کد یا شماره مشتری',
-            prefixIcon: Icons.search,
-            onChanged: _search,
+    CustomerRecord? value;
+    for (final c in _customers) {
+      if (c.id == widget.selected?.id) {
+        value = c;
+        break;
+      }
+    }
+    final items = value == null && widget.selected != null
+        ? <CustomerRecord>[..._customers, widget.selected!]
+        : _customers;
+    value ??= widget.selected;
+
+    return GfDropdown<CustomerRecord>(
+      label: widget.label,
+      hint: 'انتخاب مشتری…',
+      prefixIcon: Icons.person_search_outlined,
+      items: items,
+      value: value,
+      searchable: true,
+      maxHeight: AppSpacing.dropdownMaxHeight,
+      searchHint: 'نام، شماره تماس، کد یا شماره مشتری',
+      emptyMessage: 'مشتری یافت نشد.',
+      isLoading: _loading,
+      errorMessage: _error,
+      labelBuilder: _label,
+      itemBuilder: (context, c, index, selected, highlighted) {
+        return Align(
+          alignment: AlignmentDirectional.centerStart,
+          child: Text(
+            '${index + 1}. ${_label(c)}',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.start,
+            style: AppTypography.body.copyWith(
+              color: selected ? AppColors.primary : AppColors.textPrimary,
+              fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+            ),
           ),
-          const SizedBox(height: 14),
-          Expanded(
-            child: _results.isEmpty
-                ? const Center(
-                    child: GfEmptyState(
-                      title: 'مشتری یافت نشد.',
-                      subtitle: 'عبارت جستجو را تغییر دهید.',
-                      compact: true,
-                    ),
-                  )
-                : ListView.separated(
-                    itemCount: _results.length,
-                    separatorBuilder: (_, _) => Divider(height: 1, color: AppColors.divider),
-                    itemBuilder: (_, i) {
-                      final c = _results[i];
-                      return ListTile(
-                        contentPadding: EdgeInsets.zero,
-                        leading: Icon(
-                          c.isWalkIn ? Icons.directions_walk : Icons.person_outline,
-                          color: AppColors.primary,
-                          size: 20,
-                        ),
-                        title: Text('${i + 1}. ${c.name}', style: AppTypography.bodyMedium),
-                        subtitle: Text(
-                          [c.code, if (c.phone != null) c.phone!].join('  ·  '),
-                          style: AppTypography.caption,
-                        ),
-                        onTap: () => Navigator.of(context).pop(c),
-                      );
-                    },
-                  ),
-          ),
-        ],
-      ),
+        );
+      },
+      onChanged: (c) {
+        if (c != null) widget.onSelected(c);
+      },
     );
   }
 }

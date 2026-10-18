@@ -13,6 +13,7 @@ import 'gf_loader.dart';
 typedef GfDropdownItemBuilder<T> = Widget Function(
   BuildContext context,
   T item,
+  int index,
   bool selected,
   bool highlighted,
 );
@@ -469,8 +470,13 @@ class _GfDropdownState<T> extends State<GfDropdown<T>>
                 color: Colors.transparent,
                 child: SizedBox(
                   width: widget.width ?? _triggerWidth,
+                  // Searchable menus keep a fixed panel height so the list
+                  // area does not jump as the filter changes.
+                  height: widget.searchable ? widget.maxHeight : null,
                   child: Container(
-                    constraints: BoxConstraints(maxHeight: widget.maxHeight),
+                    constraints: widget.searchable
+                        ? null
+                        : BoxConstraints(maxHeight: widget.maxHeight),
                     decoration: BoxDecoration(
                       color: AppColors.modal,
                       borderRadius: AppRadius.input,
@@ -479,7 +485,9 @@ class _GfDropdownState<T> extends State<GfDropdown<T>>
                     ),
                     clipBehavior: Clip.antiAlias,
                     child: Column(
-                      mainAxisSize: MainAxisSize.min,
+                      mainAxisSize: widget.searchable
+                          ? MainAxisSize.max
+                          : MainAxisSize.min,
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
                         if (widget.searchable) _buildSearch(),
@@ -588,7 +596,8 @@ class _GfDropdownState<T> extends State<GfDropdown<T>>
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 12),
               child: widget.itemBuilder != null
-                  ? widget.itemBuilder!(context, item, selected, highlighted)
+                  ? widget.itemBuilder!(
+                      context, item, index, selected, highlighted)
                   : Align(
                       alignment: AlignmentDirectional.centerStart,
                       child: Text(
