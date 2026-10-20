@@ -43,9 +43,19 @@ void main() {
       final scale = GfScale.factorForSize(const Size(1600, 700));
       expect(scale, closeTo(700 / GfScale.referenceHeight, 0.001));
     });
+
+    test('text factor is layout factor boosted a little', () {
+      expect(
+        GfScale.textFactorForSize(
+          const Size(GfScale.referenceWidth, GfScale.referenceHeight),
+        ),
+        closeTo(GfScale.textBoost, 0.001),
+      );
+      expect(GfScale.textBoost, greaterThan(1.0));
+    });
   });
 
-  testWidgets('GfScaleHost keeps full scale on the main laptop size',
+  testWidgets('GfScaleHost keeps full layout scale, boosted text, on main laptop',
       (tester) async {
     late TextScaler scaler;
     late double factor;
@@ -70,7 +80,9 @@ void main() {
       ),
     );
 
+    // Layout unchanged on the main laptop; text is a few percent bigger.
     expect(factor, 1.0);
-    expect(scaler.scale(14) / 14, closeTo(1.0, 0.01));
+    expect(scaler.scale(14) / 14, closeTo(GfScale.textBoost, 0.01));
+    expect(scaler.scale(14), closeTo(15.4, 0.15));
   });
 }

@@ -7,9 +7,13 @@ import 'package:flutter/material.dart';
 ///
 /// Design reference is the **main development display** logical size
 /// (1920×1080 physical at 125% DPI → [referenceWidth] × [referenceHeight]).
-/// At that size (or larger), scale stays **1.0** so text matches the look that
-/// already worked on that laptop. Only windows smaller than the reference
-/// shrink, down to [minFactor].
+/// At that size (or larger), layout scale stays **1.0** so the layout matches
+/// the look that already worked on that laptop. Only windows smaller than the
+/// reference shrink, down to [minFactor].
+///
+/// Text gets an extra [textBoost] on top of the layout factor, so type reads
+/// a little larger everywhere (e.g. 14 → 15.4 at full scale) without widening
+/// controls or the sidebar.
 abstract final class GfScale {
   /// Logical width of the main 1920×1080 @ 125% screen.
   static const double referenceWidth = 1536;
@@ -22,6 +26,10 @@ abstract final class GfScale {
 
   /// Cap at 1.0 so larger monitors keep the designed density.
   static const double maxFactor = 1.0;
+
+  /// Text-only boost over the layout factor ("a few bigger": +10%).
+  /// Applied to [TextScaler] only — controls/sidebar keep the layout factor.
+  static const double textBoost = 1.10;
 
   /// Treat sizes within this ratio of the reference as full scale (title bar /
   /// taskbar / rounding should not shrink the "good" laptop layout).
@@ -40,6 +48,10 @@ abstract final class GfScale {
     if (raw >= fullScaleTolerance) return 1.0;
     return raw.clamp(minFactor, maxFactor);
   }
+
+  /// Effective text scale for a window [size]: layout factor × [textBoost].
+  static double textFactorForSize(Size size) =>
+      factorForSize(size) * textBoost;
 
   /// Current UI scale from [GfScaleScope], or computed from [MediaQuery].
   static double of(BuildContext context) {
@@ -89,10 +101,12 @@ class GfScaleHost extends StatelessWidget {
   Widget build(BuildContext context) {
     final mq = MediaQuery.of(context);
     final factor = GfScale.factorForSize(mq.size);
-    // Preserve OS / accessibility text scale, then multiply by UI scale.
+    // Preserve OS / accessibility text scale, then multiply by the UI text
+    // factor (layout factor plus the small text boost).
     final userFactor = mq.textScaler.scale(14) / 14;
     final combined = TextScaler.linear(
-      (userFactor * factor).clamp(GfScale.minFactor * 0.85, 2.0),
+      (userFactor * factor * GfScale.textBoost)
+          .clamp(GfScale.minFactor * 0.85, 2.0),
     );
 
     return MediaQuery(
