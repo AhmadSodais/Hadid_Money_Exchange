@@ -224,6 +224,7 @@ class LedgerTable extends StatelessWidget {
     this.onPageChanged,
     this.onPageSizeChanged,
     this.showRowNumbers = true,
+    this.rowNumberLabel,
     this.fixedRows,
     this.totalRow,
   }) : assert(totalRow == null || shrinkWrap);
@@ -251,6 +252,10 @@ class LedgerTable extends StatelessWidget {
   final ValueChanged<int>? onPageChanged;
   final ValueChanged<int>? onPageSizeChanged;
   final bool showRowNumbers;
+
+  /// Optional label for the row-number column; see
+  /// [GfDataTable.rowNumberLabel]. Receives the index into [rows].
+  final String Function(int index)? rowNumberLabel;
   final int? fixedRows;
 
   List<Widget> _cells(List<Widget> cells) => [
@@ -281,6 +286,7 @@ class LedgerTable extends StatelessWidget {
         actions: actions,
         minWidth: minWidth,
         showRowNumbers: showRowNumbers,
+        rowNumberLabel: rowNumberLabel,
         fixedRows: fixedRows,
         itemLabel: itemLabel,
       );
@@ -305,6 +311,7 @@ class LedgerTable extends StatelessWidget {
       onPageSizeChanged: onPageSizeChanged,
       itemLabel: itemLabel,
       showRowNumbers: showRowNumbers,
+      rowNumberLabel: rowNumberLabel,
       empty: empty,
       rowBuilder: _row,
     );
@@ -322,6 +329,7 @@ class _CompactLedgerTable extends StatefulWidget {
     required this.empty,
     required this.showRowNumbers,
     required this.itemLabel,
+    this.rowNumberLabel,
     this.totalCells,
     this.title,
     this.titleCount,
@@ -337,6 +345,7 @@ class _CompactLedgerTable extends StatefulWidget {
   final List<Widget>? totalCells;
   final Widget empty;
   final bool showRowNumbers;
+  final String Function(int index)? rowNumberLabel;
   final String itemLabel;
   final String? title;
   final int? titleCount;
@@ -373,7 +382,7 @@ class _CompactLedgerTableState extends State<_CompactLedgerTable> {
           width: _numberWidth,
           child: Center(
             child: Text(
-              '${i + 1}',
+              widget.rowNumberLabel?.call(i) ?? '${i + 1}',
               style: AppTypography.caption.copyWith(
                 color: AppColors.textSecondary,
                 fontWeight: FontWeight.w600,

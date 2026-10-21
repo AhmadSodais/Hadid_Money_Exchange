@@ -279,6 +279,16 @@ void main() {
       expect(await h.app.customers.search('متفرقه', includeWalkIn: true), hasLength(1));
     });
 
+    test('list is walk-in first, then newest (highest id) first', () async {
+      await h.app.customers.create(const CustomerInput(name: 'Zahra'), h.owner);
+      await h.app.customers.create(const CustomerInput(name: 'Bilal'), h.owner);
+      await h.app.customers.create(const CustomerInput(name: 'Ahmad'), h.owner);
+      final list = await h.app.customers.search('', includeWalkIn: true);
+      expect(list.map((c) => c.name).toList(),
+          ['مشتری متفرقه', 'Ahmad', 'Bilal', 'Zahra']);
+      expect(list.map((c) => c.id).toList(), [1, 4, 3, 2]);
+    });
+
     test('anonymize requires zero balance and keeps ledger history', () async {
       final k = await h.customer('Ali');
       await h.receipt(k.id, 'AFN', afn(10));

@@ -78,6 +78,7 @@ class GfDataTable extends StatefulWidget {
     this.minWidth,
     this.rowHeight,
     this.showRowNumbers = true,
+    this.rowNumberLabel,
   });
 
   final List<GfTableColumn> columns;
@@ -105,6 +106,12 @@ class GfDataTable extends StatefulWidget {
   final double? rowHeight;
   /// When true, prepends a 1-based row index column on every page.
   final bool showRowNumbers;
+
+  /// Optional label for the row-number column. Receives the same index
+  /// passed to [rowBuilder] (the global data index for client-side tables)
+  /// and returns the text to show instead of the default 1-based sequential
+  /// number, e.g. `'#'` for a pinned row that is not part of the sequence.
+  final String Function(int index)? rowNumberLabel;
 
   @override
   State<GfDataTable> createState() => _GfDataTableState();
@@ -201,7 +208,7 @@ class _GfDataTableState extends State<GfDataTable> {
     );
   }
 
-  Widget _withRowNumber(Widget row, int rowNumber) {
+  Widget _withRowNumber(Widget row, String rowNumberLabel) {
     if (!widget.showRowNumbers) return row;
     if (row is! GfTableRow) return row;
     return GfTableRow(
@@ -214,7 +221,7 @@ class _GfDataTableState extends State<GfDataTable> {
           child: Align(
             alignment: AlignmentDirectional.center,
             child: Text(
-              '$rowNumber',
+              rowNumberLabel,
               style: AppTypography.caption.copyWith(
                 color: AppColors.textSecondary,
                 fontWeight: FontWeight.w600,
@@ -421,12 +428,13 @@ class _GfDataTableState extends State<GfDataTable> {
                                 final dataIndex = widget.clientSide
                                     ? indexOffset + i
                                     : i;
-                                final rowNumber = indexOffset + i + 1;
+                                final rowNumberLabel = widget.rowNumberLabel?.call(dataIndex) ??
+                                    '${indexOffset + i + 1}';
                                 final row = widget.rowBuilder(
                                   context,
                                   dataIndex,
                                 );
-                                return _withRowNumber(row, rowNumber);
+                                return _withRowNumber(row, rowNumberLabel);
                               },
                             ),
                           ),

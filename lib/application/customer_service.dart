@@ -188,6 +188,9 @@ final class CustomerService {
 
   /// Search by name, phone, code, or numeric id. Excludes the walk-in record
   /// unless [includeWalkIn].
+  ///
+  /// Ordered with the walk-in (miscellaneous) customer first, then by id
+  /// descending, so the most recently added customer appears at the top.
   Future<List<CustomerRecord>> search(
     String query, {
     bool includeInactive = false,
@@ -208,7 +211,7 @@ final class CustomerService {
       'customers',
       where: where.isEmpty ? null : where.join(' AND '),
       whereArgs: args,
-      orderBy: 'is_walk_in DESC, name COLLATE NOCASE',
+      orderBy: 'is_walk_in DESC, id DESC',
       limit: limit,
       offset: offset,
     );

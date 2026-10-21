@@ -51,6 +51,15 @@ class _CustomersPageState extends State<CustomersPage> with RevisionReload {
     });
   }
 
+  /// Row number shown in the `#` column: the walk-in (miscellaneous)
+  /// customer is not part of the sequence and shows `#` itself; every other
+  /// customer is numbered sequentially from 1 in list order (newest first).
+  String _rowNumberLabel(int index) {
+    if (index < 0 || index >= _customers.length) return '${index + 1}';
+    if (_customers[index].isWalkIn) return '#';
+    return '${_customers.take(index + 1).where((c) => !c.isWalkIn).length}';
+  }
+
   void _openStatement(CustomerRecord c) => context.go('${AppRoutes.customerStatement}?id=${c.id}');
 
   Future<void> _onAction(String action, CustomerRecord c) async {
@@ -145,6 +154,7 @@ class _CustomersPageState extends State<CustomersPage> with RevisionReload {
               itemLabel: 'مشتری',
               emptyText: 'مشتری یافت نشد.',
               emptyHint: canManage ? 'برای شروع، «مشتری جدید» را بزنید.' : null,
+              rowNumberLabel: _rowNumberLabel,
               columns: const [
                 LedgerColumn.code(),
                 LedgerColumn.primary('نام'),
