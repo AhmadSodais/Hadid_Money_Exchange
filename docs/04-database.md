@@ -42,7 +42,7 @@ erDiagram
 | Table | Purpose | Key constraints |
 |---|---|---|
 | `currencies` | Code, Persian name, symbol, amount precision (0–6), rate scale (0–12), rounding mode, active flag, order | Uppercase code; precision cannot change after postings exist (trigger) |
-| `application_settings` | Key/value policies: `business.name`, `business.city`, `business.address`, `posting.max_backdate_days`, `posting.allow_negative_cash`, `posting.lock_reconciled_days`, `backup.auto_enabled`, `backup.auto_interval_hours`, `backup.retention_count`, `excel.auto_enabled`, `excel.auto_interval_hours`, `excel.auto_retention_count`, `excel.auto_directory` (empty = default folder) | – |
+| `application_settings` | Key/value policies: `business.name`, `business.city`, `business.address`, `posting.max_backdate_days`, `posting.allow_negative_cash` (legacy; no longer disables the absolute cashbox withdrawal limit), `posting.lock_reconciled_days`, `backup.auto_enabled`, `backup.auto_interval_hours`, `backup.retention_count`, `excel.auto_enabled`, `excel.auto_interval_hours`, `excel.auto_retention_count`, `excel.auto_directory` (empty = default folder) | – |
 | `sequences` | Counters for reference numbers and customer codes | `value >= 0` |
 | `roles`, `permissions`, `role_permissions`, `users` | Role-based access. Users store the display name shown in the app (`display_name`), an optional phone number (`phone`), PBKDF2 hash, salt, iteration count, failed attempts, lockout | Unique username (case-insensitive) |
 | `customers` | Customer master data, status `active` / `inactive` / `anonymized`, walk-in flag, `legacy_id` | Exactly one walk-in; name required; no deletion (trigger) |

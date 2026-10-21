@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hadid_exchange/application/posting_service.dart';
+import 'package:hadid_exchange/domain/errors/domain_errors.dart';
 import 'package:hadid_exchange/domain/shared/ids.dart';
 import 'package:hadid_exchange/domain/transactions/financial_command.dart';
 import 'package:hadid_exchange/infrastructure/database/schema_v5.dart';
@@ -37,8 +38,9 @@ void main() {
     final ali = await h.customer('Ali');
     expect(ali.code, 'C-0002');
     expect((await h.app.catalog.drawers()).single.code, 'D-0001');
-    expect((await h.app.catalog.addDrawer('Second', h.owner)).code, 'D-0002');
-    expect(await ledgerAccountCodes(), {'1100-0001', '1100-0002', '2100-0001', '2100-0002'});
+    // Single-cashbox model: a second drawer cannot be created.
+    await expectLater(h.app.catalog.addDrawer('Second', h.owner), throwsA(isA<BusinessRuleError>()));
+    expect(await ledgerAccountCodes(), {'1100-0001', '2100-0001', '2100-0002'});
 
     final key = PostingService.newIdempotencyKey();
     expect(key, matches(Ids.keyPattern));
@@ -67,6 +69,8 @@ void main() {
     final edited = await h.app.posting.correct(
         transactionId: original.id, replacement: receipt(ali.id, h.key()), reason: 'typo', actor: h.owner);
     final reversalId = (await h.app.posting.transactionById(original.id))!.reversedByTransactionId!;
+    // The customer's funds sit in the vault; record own USD capital first.
+    await h.openingCash('USD', usd(100));
     final opening = await h.app.posting.post(
       OpeningCustomerCommand(
         idempotencyKey: h.key(),

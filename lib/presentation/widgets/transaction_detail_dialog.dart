@@ -243,7 +243,13 @@ class _TransactionDetailDialogState extends State<TransactionDetailDialog> {
             _Item('کمیشن' + via(tx.feeSettlement, incoming: true), tx.feeCurrency, fee, true),
         ];
       case TransactionType.openingCustomer:
-        return [source(up ? 'بیلانس افتتاحیه (طلب مشتری)' : 'بیلانس افتتاحیه (بدهی مشتری)', incoming: up)];
+        return [
+          source(
+              up
+                  ? 'بیلانس افتتاحیه (طلب مشتری — وجه مشتری وارد صندوق اصلی مشترک شد؛ سرمایه اولیه تغییر نمی‌کند)'
+                  : 'بیلانس افتتاحیه (بدهی مشتری — وجه از صندوق اصلی مشترک به مشتری پرداخت شده، حداکثر تا موجودی کل صندوق؛ سرمایه اولیه تغییر نمی‌کند)',
+              incoming: up)
+        ];
       case TransactionType.customerAdjustment:
         return [source(up ? 'اصلاح حساب — افزایش طلب مشتری' : 'اصلاح حساب — افزایش بدهی مشتری', incoming: up)];
       case TransactionType.openingCash:

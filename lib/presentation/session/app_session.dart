@@ -35,7 +35,18 @@ class AppSession extends ChangeNotifier {
   int get revision => _revision;
   int get walkInCustomerId => _walkInId;
   List<CashDrawer> get drawers => _drawers;
-  List<CashDrawer> get activeDrawers => _drawers.where((d) => d.isActive).toList();
+
+  /// The single shared main cashbox (the first drawer). All cash in the
+  /// system — own capital and customer funds — lives in this one fund.
+  CashDrawer? get mainCashbox => _drawers.isEmpty ? null : _drawers.first;
+  int? get mainCashboxId => mainCashbox?.id;
+
+  /// Only the main cashbox is ever offered for new postings; legacy extra
+  /// drawers were consolidated into it (schema v9) and stay inactive.
+  List<CashDrawer> get activeDrawers {
+    final main = mainCashbox;
+    return main != null && main.isActive ? [main] : const [];
+  }
 
   /// Every currency (inactive ones are still needed to display history).
   Map<String, Currency> get currencies => _currencies;

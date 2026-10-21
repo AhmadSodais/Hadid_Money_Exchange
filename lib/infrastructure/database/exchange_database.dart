@@ -11,6 +11,8 @@ import 'schema_v4.dart';
 import 'schema_v5.dart';
 import 'schema_v6.dart';
 import 'schema_v7.dart';
+import 'schema_v8.dart';
+import 'schema_v9.dart';
 
 /// A versioned schema migration applied inside a single transaction.
 final class SchemaMigration {
@@ -60,6 +62,12 @@ abstract final class ExchangeDatabase {
         await txn.execute(sql);
       }
     }),
+    SchemaMigration(8, 'initial_capital_account_name', (txn, seed) async {
+      for (final sql in schemaV8) {
+        await txn.execute(sql);
+      }
+    }),
+    SchemaMigration(9, 'single_main_cashbox', (txn, seed) => consolidateToSingleCashbox(txn)),
   ];
 
   static int get latestVersion => migrations.last.version;
@@ -243,7 +251,7 @@ abstract final class ExchangeDatabase {
     await account(Ids.customerAccount(1), 'مشتری متفرقه', AccountType.liability, c,
         AccountRole.customer, parentId: customers, customerId: 1);
     final equity = await account('3000', 'سرمایه', AccountType.equity, c, AccountRole.control);
-    await account('3100', 'سرمایه و بیلانس افتتاحیه', AccountType.equity, c,
+    await account('3100', 'سرمایه اولیه صرافی', AccountType.equity, c,
         AccountRole.openingEquity, parentId: equity);
     await account('3200', 'اصلاحات مالی مجاز', AccountType.equity, c,
         AccountRole.adjustment, parentId: equity);

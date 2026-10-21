@@ -110,6 +110,40 @@ final class LedgerQueries {
   Future<int> cashBalance(String currency, {BusinessDate? asOf, int? drawerId}) async =>
       (await cashBalances(asOf: asOf, drawerId: drawerId))[currency] ?? 0;
 
+  /// The unified main-cashbox balance per currency: the total cash in
+  /// the single shared fund, pooling the exchange's own capital and
+  /// customer funds (every cash account together). This total is the
+  /// withdrawal limit — no payment, expense, exchange payout, or
+  /// client-debt opening may exceed it in its currency.
+  Future<Map<String, int>> cashboxBalances({BusinessDate? asOf}) => cashBalances(asOf: asOf);
+
+  Future<int> cashboxBalance(String currency, {BusinessDate? asOf}) async =>
+      (await cashboxBalances(asOf: asOf))[currency] ?? 0;
+
+  /// Cashbox composition per currency. These are *derived* views of the
+  /// same journal, never stored separately:
+  /// - `physicalMinor`: the cashbox total (all cash in the main fund);
+  /// - `reservedMinor`: the part of it that belongs to customers (total
+  ///   customer liabilities held in the fund, informational);
+  /// - `availableMinor`: the withdrawable balance = the cashbox total
+  ///   itself, because own and customer funds are pooled in one fund;
+  /// - `receivablesMinor`: what customers owe the exchange (not cash yet).
+  Future<Map<String, ({int physicalMinor, int reservedMinor, int availableMinor, int receivablesMinor})>>
+      cashAvailability({BusinessDate? asOf, int? drawerId}) async {
+    final cash = await cashBalances(asOf: asOf, drawerId: drawerId);
+    final totals = await customerTotals(asOf: asOf);
+    final codes = {...cash.keys, ...totals.keys};
+    return {
+      for (final code in codes)
+        code: (
+          physicalMinor: cash[code] ?? 0,
+          reservedMinor: totals[code]?.liabilities ?? 0,
+          availableMinor: cash[code] ?? 0,
+          receivablesMinor: totals[code]?.receivables ?? 0,
+        ),
+    };
+  }
+
   /// Opening (before [from]), inflows, outflows for each currency in range.
   Future<List<CashMovement>> cashMovement(BusinessDate from, BusinessDate to,
       {int? drawerId}) async {

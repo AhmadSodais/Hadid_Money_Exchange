@@ -172,6 +172,14 @@ void main() {
     };
     expect(balances['AFN'], afn(500));
     expect(balances['USD'], usd(150));
+    // Residual initial capital excludes customer funds: 61,000 − 500 and
+    // 1,200 − 150. The full legacy physical count is rebuilt in the drawer.
+    final capital = {
+      for (final r in await h.app.queries.trialBalance()) if (r.accountCode == '3100') r.currency: r.netMinor,
+    };
+    // IRT has no imported legacy cash, so its debtor balance keeps the
+    // historical 3100 funding in that currency only (see B15).
+    expect(capital, {'AFN': -afn(60500), 'USD': -usd(1050), 'IRT': -3000000});
     expect(await h.app.queries.cashBalances(), {'AFN': afn(61000), 'USD': usd(1200)});
     expect(await h.app.queries.integrityProblems(), isEmpty);
 

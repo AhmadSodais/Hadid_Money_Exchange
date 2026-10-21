@@ -609,7 +609,7 @@ class _ExchangePageState extends State<ExchangePage> with RevisionReload {
           bold: true,
         ),
         WorkbenchValueRow(label: 'مشتری', value: _customer?.name ?? '—'),
-        WorkbenchValueRow(label: 'صندوق', value: drawerName ?? '—'),
+        WorkbenchValueRow(label: 'صندوق اصلی', value: drawerName ?? '—'),
         WorkbenchValueRow(label: 'تاریخ', value: DateFormatFa.business(_date)),
         if (outCur != null)
           WorkbenchBalanceChange(
@@ -619,7 +619,11 @@ class _ExchangePageState extends State<ExchangePage> with RevisionReload {
             after: MoneyFormat.amount(available - outMinor, outCur),
             afterColor: short ? AppColors.error : null,
           ),
-        if (short) const InfoBanner('موجودی صندوق برای این پرداخت کافی نیست.', tone: BannerTone.error),
+        if (short)
+          const InfoBanner(
+            'این پرداخت نمی‌تواند از موجودی فعلی صندوق اصلی مشترک بیشتر باشد.',
+            tone: BannerTone.error,
+          ),
         for (final e in _customerEffect(p, buy).entries)
           if (e.value != 0)
             Builder(builder: (context) {

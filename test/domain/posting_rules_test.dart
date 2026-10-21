@@ -189,15 +189,21 @@ void main() {
       expect(netBy(p.journal, cash), {'USD': 10000, 'AFN': -695000});
     });
 
-    test('opening customer balance: credit posts cash; debit posts equity', () {
+    test('opening customer balance: posts against vault cash, never initial capital', () {
+      // Debt (customer owes the exchange): funds paid out of the vault —
+      // Dr customer / Cr cash; account 3100 is untouched.
       final owes = rules.plan(OpeningCustomerCommand(
           idempotencyKey: 'k',
           effectiveDate: date,
           customerId: 5,
           currency: 'AFN',
-          signedMinor: -80000));
+          signedMinor: -80000,
+          drawerId: 1));
       expect(netBy(owes.journal, const CustomerAccountRef(5)), {'AFN': 80000}); // debit
-      expect(netBy(owes.journal, const SystemAccountRef(AccountRole.openingEquity)), {'AFN': -80000});
+      expect(netBy(owes.journal, cash), {'AFN': -80000});
+      expect(netBy(owes.journal, const SystemAccountRef(AccountRole.openingEquity)), isEmpty);
+      // Liability (exchange owes the customer): the customer's funds in the
+      // vault — Dr cash / Cr customer; initial capital is untouched.
       final owed = rules.plan(OpeningCustomerCommand(
           idempotencyKey: 'k',
           effectiveDate: date,
@@ -206,7 +212,10 @@ void main() {
           signedMinor: 80000,
           drawerId: 1));
       expect(netBy(owed.journal, const CustomerAccountRef(5)), {'AFN': -80000}); // credit
-      expect(netBy(owed.journal, const CashAccountRef(1)), {'AFN': 80000}); // cash in
+      expect(netBy(owed.journal, cash), {'AFN': 80000});
+      expect(netBy(owed.journal, const SystemAccountRef(AccountRole.openingEquity)), isEmpty);
+      // A drawer is always required: an opening balance is the customer's
+      // share of one specific vault.
       expect(
           () => rules.plan(OpeningCustomerCommand(
               idempotencyKey: 'k',
@@ -214,6 +223,14 @@ void main() {
               customerId: 5,
               currency: 'AFN',
               signedMinor: 80000)),
+          throwsA(isA<ValidationError>()));
+      expect(
+          () => rules.plan(OpeningCustomerCommand(
+              idempotencyKey: 'k',
+              effectiveDate: date,
+              customerId: 5,
+              currency: 'AFN',
+              signedMinor: -80000)),
           throwsA(isA<ValidationError>()));
     });
 

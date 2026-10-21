@@ -759,9 +759,10 @@ class DrawerPicker extends StatelessWidget {
       if (d.id == value) selected = d;
     }
     return GfDropdown<CashDrawer>(
-      label: 'صندوق',
+      label: 'صندوق اصلی مشترک',
       items: drawers,
       value: selected,
+      enabled: drawers.length > 1,
       labelBuilder: (d) => d.nameFa,
       onChanged: (d) {
         if (d != null) onChanged(d.id);

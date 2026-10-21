@@ -4,7 +4,6 @@ import '../domain/errors/domain_errors.dart';
 import '../domain/money/currency.dart';
 import '../domain/money/decimal.dart';
 import '../domain/security/permissions.dart';
-import '../domain/shared/ids.dart';
 import 'audit_writer.dart';
 import 'ledger_events.dart';
 
@@ -109,44 +108,22 @@ final class CatalogService {
     ];
   }
 
+  /// The single shared main cashbox: the first (seeded) drawer. All cash —
+  /// the exchange's own capital and customer funds alike — is pooled in
+  /// this one fund; there are no separate cash drawers anymore.
+  Future<CashDrawer?> mainCashbox() async {
+    final all = await drawers();
+    return all.isEmpty ? null : all.first;
+  }
+
   /// Adds a cash drawer together with its cash account under 1100.
+  ///
+  /// Disabled under the single-cashbox model: every amount lives in the
+  /// main cashbox, so creating a separate drawer is rejected.
   Future<CashDrawer> addDrawer(String name, Actor actor) async {
     _require(actor, Permissions.settingsManage);
-    final clean = name.trim();
-    if (clean.isEmpty) throw const ValidationError('drawer.name', 'نام صندوق الزامی است.');
-    final now = DateTime.now().toUtc().toIso8601String();
-    late CashDrawer drawer;
-    await _db.transaction((txn) async {
-      await _requireUniqueDrawerName(txn, clean);
-      final next = (await txn.rawQuery('SELECT COALESCE(MAX(id), 0) + 1 AS n FROM cash_drawers')).first['n'] as int;
-      final code = Ids.drawer(next);
-      await txn.insert('cash_drawers', {
-        'id': next,
-        'code': code,
-        'name_fa': clean,
-        'is_active': 1,
-        'created_at': now,
-      });
-      final parent = await txn.query('accounts',
-          columns: ['id'], where: 'code = ?', whereArgs: [Ids.cashAccountParent], limit: 1);
-      await txn.insert('accounts', {
-        'code': Ids.cashAccount(next),
-        'name_fa': clean,
-        'type': 'asset',
-        'normal_side': 'debit',
-        'role': 'cash',
-        'parent_id': parent.first['id'],
-        'drawer_id': next,
-        'is_active': 1,
-        'is_system': 0,
-        'created_at': now,
-      });
-      await AuditWriter.write(txn,
-          actor: actor, action: 'drawer.add', entityType: 'drawer', entityId: '$next', after: {'name': clean});
-      drawer = CashDrawer(next, code, clean, true);
-    });
-    _events.notify(LedgerChange.reference);
-    return drawer;
+    throw const BusinessRuleError('cashbox.single',
+        'در مدل تک‌صندوقی، همه وجوه در صندوق اصلی مشترک نگهداری می‌شود و ساخت صندوق جداگانه ممکن نیست.');
   }
 
   /// Renames or (de)activates a drawer. A drawer can be deactivated only
@@ -159,6 +136,18 @@ final class CatalogService {
       final rows = await txn.query('cash_drawers', where: 'id = ?', whereArgs: [id]);
       if (rows.isEmpty) throw const BusinessRuleError('drawer.missing', 'صندوق پیدا نشد.');
       final before = rows.first;
+      // Single-cashbox model: only the main (first) cashbox may be active.
+      // Legacy extra drawers may be renamed or deactivated for cleanup,
+      // but never (re)activated, and the main cashbox never deactivates.
+      final mainId = (await txn.rawQuery('SELECT MIN(id) AS n FROM cash_drawers')).first['n'] as int?;
+      if (isActive && mainId != null && id != mainId) {
+        throw const BusinessRuleError('cashbox.single',
+            'در مدل تک‌صندوقی فقط صندوق اصلی مشترک فعال است و صندوق دیگری فعال نمی‌شود.');
+      }
+      if (!isActive && mainId != null && id == mainId) {
+        throw const BusinessRuleError(
+            'cashbox.mainRequired', 'صندوق اصلی مشترک تنها صندوق سیستم است و غیرفعال نمی‌شود.');
+      }
       await _requireUniqueDrawerName(txn, clean, exceptId: id);
       if (!isActive && before['is_active'] == 1) {
         final others = await txn.rawQuery(

@@ -5,8 +5,9 @@
 1. **Per-currency double entry.** Every journal must have equal debits and credits *in each currency separately*. A 100 USD debit is never "balanced" by a 7,000 AFN credit.
 2. **Exchange-position clearing account (3300).** An exchange moves value between currencies through 3300, so each currency balances on its own. The balance of 3300 per currency is the exchange's open currency position.
 3. **No invented profit.** The difference between buy and sell rates stays in 3300. Revenue is recognized only for explicit fees (4100). Account 4200 (spread revenue) is reserved until the owner decides on a cost-basis method.
-4. **Cash and balances are derived.** Cash per drawer and currency and every customer position are sums of journal lines. Nothing is stored twice.
-5. **Corrections by reversal or adjustment.** A reversal mirrors every line of the original. Adjustments require a reason and a permission.
+4. **Cash and balances are derived.** Cash per currency and every customer position are sums of journal lines. Nothing is stored twice.
+5. **One unified cashbox.** All cash — the exchange's own capital and customer funds — is pooled in a single main cashbox (the first/seeded drawer, «صندوق اصلی»). There are no separate cash drawers: creating one is rejected (`cashbox.single`), postings naming another drawer are rejected (`cashbox.nonMainDrawer`), and schema v9 consolidates any legacy extra drawers into the main fund with dated transfer transactions before deactivating them. The **cashbox balance** of a currency is the total cash in the fund, and it is the absolute withdrawal limit: no withdrawal (برد, expense, cash-settled exchange payout, negative cash adjustment, reversal/correction net effect, or client-debt opening) may exceed it — e.g. AFN 21,000 cannot leave a cashbox holding AFN 20,000. This limit has no settings override.
+6. **Corrections by reversal or adjustment.** A reversal mirrors every line of the original. Adjustments require a reason and a permission.
 
 ## Chart of accounts
 
@@ -14,11 +15,11 @@
 |---|---|---|---|---|
 | 1000 | دارایی‌ها | asset | debit | control |
 | 1100 | صندوق‌ها | asset | debit | control |
-| 1101 | صندوق اصلی (one sub-account per drawer) | asset | debit | cash |
+| 1101 | صندوق اصلی (the single main cashbox account) | asset | debit | cash |
 | 2000 | بدهی‌ها | liability | credit | control |
 | 2100 | حسابات مشتریان (one sub-account per customer, created with the customer) | liability | credit | control / customer |
 | 3000 | سرمایه | equity | credit | control |
-| 3100 | سرمایه و بیلانس افتتاحیه | equity | credit | openingEquity |
+| 3100 | سرمایه اولیه صرافی | equity | credit | openingEquity |
 | 3200 | اصلاحات مالی مجاز | equity | credit | adjustment |
 | 3300 | موقعیت ارزی (حساب تبادله) | clearing | credit | exchangePosition |
 | 4000 | عواید | revenue | credit | control |
@@ -33,7 +34,7 @@ Accounts are multi-currency: a line carries its own currency, and balances are a
 ## Sign conventions
 
 - **Customer position** = credits − debits on the customer's account. **Positive means the exchange owes the customer** (طلب مشتری); negative means the customer owes the exchange (بدهی مشتری).
-- **Cash** = debits − credits on the drawer's account.
+- **Cash (cashbox balance)** = debits − credits on the main cashbox account, i.e. the total pooled cash per currency.
 
 ## Rate convention
 
@@ -41,7 +42,7 @@ Accounts are multi-currency: a line carries its own currency, and balances are a
 
 ## Posting rules
 
-Notation: `Dr account  currency  amount`. "Cash" is the selected drawer's account; "Customer" is the selected customer's account.
+Notation: `Dr account  currency  amount`. "Cash" is the single main cashbox account; "Customer" is the selected customer's account.
 
 ### Receipt (رسید): the customer hands money to the exchange
 
@@ -86,13 +87,21 @@ Settlement "Cash" moves the drawer. Settlement "Customer" moves the customer's a
 | Dr | Fee settlement (Cash or Customer) | F | fee |
 | Cr | 4100 Fee revenue | F | fee |
 
-### Opening cash (posted once per drawer and currency)
+### Opening cash (the initial capital, then later injections, in the main cashbox)
 
 `Dr Cash / Cr 3100` in that currency.
 
 ### Opening customer balance (once per customer and currency)
 
-Positive (exchange owes the customer — طلب مشتری): the funds are treated as cash already held in the selected drawer, same as a receipt: `Dr Cash / Cr Customer`. Negative (customer owes the exchange — بدهی مشتری): `Dr Customer / Cr 3100`.
+Cashbox composition is derived per currency, never stored twice: **cashbox balance** = the total cash in the single main fund (own capital + customer funds pooled); **customer funds in the cashbox** = total customer liabilities (positive customer positions), the customers' informational share of the total; **the exchange's own share** = cashbox total − customer funds; **own capital** (net) = own share + customer receivables. The cashbox balance changes only when cash actually moves.
+
+Initial capital (3100 سرمایه اولیه صرافی) is the exchange's **own** funds only and is posted exclusively by opening cash; customer opening balances never touch it (the old `Dr/Cr 3100` customer-opening rule posted client money through the capital account, which misstated initial capital). An opening customer balance records one customer's share of the main cashbox against cash, exactly like a receipt/payment:
+
+Positive (exchange owes the customer — طلب مشتری, a customer liability): the customer's funds held with the exchange in the main cashbox: `Dr Cash / Cr Customer`. The cashbox total and the liability rise together; initial capital is unchanged.
+
+Negative (customer owes the exchange — بدهی مشتری, a client debt): funds that were withdrawn / paid out or lent from the cashbox to the customer: `Dr Customer / Cr Cash`. The cashbox total falls. Because the exchange can only have paid out what the fund actually held, the posting is **verified against the cashbox**: it is rejected (`opening.debtExceedsAvailableFunds`) when the amount exceeds the current cashbox balance in that currency on the effective date — the pooled total, with no deduction for other customers' shares. The error states the requested amount and the cashbox balance and says the amount cannot exceed it. When the customer later pays, a receipt brings the cash back into the cashbox. Every other withdrawal is capped by the same total through the pooled negative-cash check (`cash.insufficient`), evaluated on the cashbox as a whole across all dates.
+
+The two settlement flows are distinct. *Covering/settling a recorded liability without paying out* (e.g. reversing an erroneous opening liability) unwinds its entry: liability falls and the customer's share leaves the cashbox. *Paying out/returning funds to the customer* (برد: `Dr Customer / Cr Cash`) reduces the cashbox total and the liability together.
 
 ### Cash adjustment (reconciliation difference)
 
@@ -112,7 +121,7 @@ A new transaction of type `reversal` whose journal swaps debit and credit on eve
 
 ## Worked example (mandatory scenario)
 
-Opening cash AFN 100,000 and USD 2,000. The four transactions of section 24 lead to **AFN 97,350 and USD 2,050** in every view (dashboard, cash report, trial balance, journal sums). After reversing transaction B, every view shows **AFN 93,800 and USD 2,100**. See `test/integration/end_to_end_scenario_test.dart`.
+Opening cash AFN 100,000 and USD 2,000, plus customer K's opening debt of 800 (paid out of the vault, so AFN cash starts at 99,200). The four transactions of section 24 lead to **AFN 96,550 and USD 2,050** in every view (dashboard, cash report, trial balance, journal sums). After reversing transaction B, every view shows **AFN 93,000 and USD 2,100**. See `test/integration/end_to_end_scenario_test.dart`.
 
 ## Reconciliation
 

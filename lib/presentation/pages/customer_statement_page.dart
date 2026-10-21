@@ -22,6 +22,7 @@ import '../providers/app_settings_provider.dart';
 import '../session/app_session.dart';
 import '../widgets/app_shell.dart';
 import '../widgets/exchange_ui.dart';
+import '../widgets/transaction_actions.dart';
 import '../widgets/transaction_detail_dialog.dart';
 
 class CustomerStatementPage extends StatefulWidget {
@@ -167,7 +168,36 @@ class _CustomerStatementPageState extends State<CustomerStatementPage> with Revi
         )
       else
         description,
+      _rowMenu(t, s),
     ];
+  }
+
+  Future<void> _runRowAction(_RowAction action, PostedTransaction t) async {
+    switch (action) {
+      case _RowAction.details:
+        await TransactionDetailDialog.show(context, t.id);
+      case _RowAction.edit:
+        await TransactionActions.edit(context, t);
+      case _RowAction.delete:
+        await TransactionActions.delete(context, t);
+    }
+    // Edit/delete commit through the posting service, whose notification
+    // bumps the session revision and reloads this page via [RevisionReload].
+  }
+
+  /// Per-row ⋮ menu: details, plus edit/delete when the transaction and the
+  /// user's permissions allow them (same rules as the journal list).
+  Widget _rowMenu(PostedTransaction t, AppSession s) {
+    return LedgerRowMenu(
+      onSelected: (v) => _runRowAction(_RowAction.values.byName(v), t),
+      items: [
+        gfPopupMenuItem(value: _RowAction.details.name, label: 'جزئیات'),
+        if (TransactionActions.canEdit(t, s))
+          gfPopupMenuItem(value: _RowAction.edit.name, label: 'ویرایش'),
+        if (TransactionActions.canDelete(t, s))
+          gfPopupMenuItem(value: _RowAction.delete.name, label: 'حذف', danger: true),
+      ],
+    );
   }
 
   @override
@@ -325,6 +355,7 @@ class _CustomerStatementPageState extends State<CustomerStatementPage> with Revi
                       // The rate hugs its end edge; this gap keeps it off the description.
                       LedgerColumn('', width: 24),
                       LedgerColumn('شرح'),
+                      LedgerColumn.actions(),
                     ],
                     rows: [for (final t in txs) _row(t, s)],
                     onTapRow: (i) => TransactionDetailDialog.show(context, txs[i].id),
@@ -336,6 +367,9 @@ class _CustomerStatementPageState extends State<CustomerStatementPage> with Revi
   }
 
 }
+
+/// Actions offered by the ⋮ menu at the end of each transaction row.
+enum _RowAction { details, edit, delete }
 
 enum _TypeFilter {
   all('همه معاملات', 'همه انواع معامله در این ارز', Icons.list_alt_rounded, null),
@@ -574,7 +608,7 @@ class _SignedAmountDialogState extends State<_SignedAmountDialog> {
       GfToast.error(context, 'مبلغ معتبر نیست.');
       return;
     }
-    if (!widget.adjustment && _owedToCustomer && _drawerId == null) {
+    if (!widget.adjustment && _drawerId == null) {
       GfToast.error(context, 'صندوق را انتخاب کنید.');
       return;
     }
@@ -595,7 +629,7 @@ class _SignedAmountDialogState extends State<_SignedAmountDialog> {
             customerId: widget.customer.id,
             currency: currency.code,
             signedMinor: signed,
-            drawerId: _owedToCustomer ? _drawerId : null,
+            drawerId: _drawerId,
           );
     setState(() => _saving = true);
     final s = context.read<AppSession>();
@@ -611,7 +645,7 @@ class _SignedAmountDialogState extends State<_SignedAmountDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final needsDrawer = !widget.adjustment && _owedToCustomer;
+    final needsDrawer = !widget.adjustment;
     return GfDialogShell(
       icon: widget.adjustment ? Icons.tune : Icons.flag_outlined,
       iconColor: AppColors.primary,
@@ -670,9 +704,9 @@ class _SignedAmountDialogState extends State<_SignedAmountDialog> {
           DialogInfoBanner(
             message: widget.adjustment
                 ? 'اصلاح با سند حسابداری مجزا و دلیل ثبت می‌شود و در سوابق ممیزی باقی می‌ماند.'
-                : needsDrawer
-                    ? 'طلب مشتری به معنی وجه موجود نزد صرافی است؛ مبلغ همزمان به حساب مشتری و موجودی صندوق اضافه می‌شود. برای هر ارز فقط یک بار ثبت می‌شود (مگر پس از برگشت).'
-                    : 'بیلانس افتتاحیه برای هر ارز فقط یک بار ثبت می‌شود (مگر پس از برگشت).',
+                : _owedToCustomer
+                    ? 'طلب مشتری یعنی این مبلغ، پول مشتری نزد صرافی در صندوق اصلی مشترک است: موجودی کل صندوق و طلب مشتری به همان میزان زیاد می‌شود و سرمایه اولیه صرافی تغییر نمی‌کند — پول مشتری هرگز سرمایه صرافی نیست، هرچند همه در یک صندوق مشترک نگهداری می‌شود. برای هر ارز فقط یک بار ثبت می‌شود (مگر پس از برگشت).'
+                    : 'بدهی مشتری یعنی این مبلغ قبلاً از صندوق اصلی مشترک به مشتری پرداخت یا قرض داده شده است: موجودی صندوق به همان میزان کم می‌شود و هنگام پرداخت مشتری، وجه دوباره به صندوق برمی‌گردد. مبلغ نمی‌تواند از موجودی فعلی صندوق اصلی مشترک بیشتر باشد (مثلاً اگر صندوق ۲۰٬۰۰۰ افغانی دارد، بدهی ۲۱٬۰۰۰ افغانی ثبت نمی‌شود)؛ در غیر این صورت ثبت رد و دلیل نمایش داده می‌شود. برای هر ارز فقط یک بار ثبت می‌شود (مگر پس از برگشت).',
           ),
         ],
       ),

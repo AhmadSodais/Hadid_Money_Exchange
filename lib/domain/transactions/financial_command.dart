@@ -197,9 +197,14 @@ final class OpeningCashCommand extends FinancialCommand {
 }
 
 /// Opening balance of a customer. Sign follows the customer-position
-/// convention: positive = exchange owes the customer (طلب مشتری) and the
-/// funds are treated as cash already in [drawerId]; negative = the customer
-/// owes the exchange (بدهی مشتری) and is offset against opening equity.
+/// convention: positive = exchange owes the customer (طلب مشتری), the
+/// funds the customer holds with the exchange in the single main
+/// cashbox; negative = the customer owes the exchange (بدهی مشتری),
+/// funds paid out of that cashbox to the customer. Both post against
+/// the main cashbox (like a receipt/payment) and never against initial
+/// capital, which is the exchange's own funds only. A debt opening is
+/// rejected when it exceeds the current cashbox balance — the total
+/// pooled cash (own capital + customer funds) in that currency.
 final class OpeningCustomerCommand extends FinancialCommand {
   const OpeningCustomerCommand({
     required super.idempotencyKey,
@@ -209,14 +214,23 @@ final class OpeningCustomerCommand extends FinancialCommand {
     required this.currency,
     required this.signedMinor,
     this.drawerId,
+    this.legacyFunding = false,
   });
 
   final int customerId;
   final String currency;
   final int signedMinor;
 
-  /// Required when [signedMinor] is positive (cash vault increases).
+  /// Always required: the single main cashbox holding the customer's
+  /// funds (positive) or from which the customer's debt was paid out
+  /// (negative).
   final int? drawerId;
+
+  /// Legacy-migration only (never set from the UI): post this opening
+  /// against the initial-capital account (3100) instead of drawer cash,
+  /// for currencies whose legacy physical cash was not imported — the
+  /// historical legacy behavior, which replayed balances without cash.
+  final bool legacyFunding;
 
   @override
   TransactionType get type => TransactionType.openingCustomer;

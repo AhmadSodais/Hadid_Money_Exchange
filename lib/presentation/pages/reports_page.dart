@@ -159,7 +159,9 @@ class _PositionReportState extends _ReportState<_PositionReport> {
       children: [
         const SizedBox(height: AppSpacing.sm),
         const InfoBanner(
-          'خالص = نقد صندوق - طلب مشتریان + بدهی مشتریان (به همان ارز). '
+          'صندوق اصلی مشترک = کل نقد یک صندوق واحد (سرمایه صرافی + وجوه مشتریان) و سقف هر برداشت همان موجودی کل است؛ '
+          'وجوه مشتریان = سهم مشتریان از صندوق (طلب مشتریان)؛ سهم خود صرافی = کل - وجوه مشتریان؛ '
+          'خالص (سرمایه خود صرافی) = سهم خود + بدهی مشتریان (به همان ارز). '
           'حساب موقعیت ارزی مجموع ارز خریداری‌شده و فروخته‌شده را نشان می‌دهد و سود نیست.',
         ),
         const SizedBox(height: AppSpacing.sm),
@@ -175,10 +177,11 @@ class _PositionReportState extends _ReportState<_PositionReport> {
             ],
             columns: const [
               LedgerColumn.primary('ارز'),
-              LedgerColumn.amount('نقد صندوق'),
-              LedgerColumn.amount('طلب مشتریان'),
+              LedgerColumn.amount('موجودی صندوق اصلی مشترک'),
+              LedgerColumn.amount('وجوه مشتریان در صندوق'),
+              LedgerColumn.amount('سهم خود صرافی در صندوق'),
               LedgerColumn.amount('بدهی مشتریان'),
-              LedgerColumn.amount('خالص'),
+              LedgerColumn.amount('خالص (سرمایه خود)'),
               LedgerColumn.amount('موقعیت ارزی'),
             ],
             rows: [
@@ -187,6 +190,11 @@ class _PositionReportState extends _ReportState<_PositionReport> {
                   Text(_cur(s, code), style: AppTypography.bodyMedium),
                   AmountText(_cash[code] ?? 0, s.currency(code)),
                   AmountText(_customers[code]?.liabilities ?? 0, s.currency(code)),
+                  AmountText(
+                    (_cash[code] ?? 0) - (_customers[code]?.liabilities ?? 0),
+                    s.currency(code),
+                    signColor: true,
+                  ),
                   AmountText(_customers[code]?.receivables ?? 0, s.currency(code)),
                   AmountText(
                     (_cash[code] ?? 0) - (_customers[code]?.liabilities ?? 0) + (_customers[code]?.receivables ?? 0),

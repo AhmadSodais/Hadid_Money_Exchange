@@ -6,6 +6,8 @@ import '../domain/accounting/posting_rules.dart';
 import '../domain/errors/domain_errors.dart';
 import '../domain/exchange/exchange_rate.dart';
 import '../domain/security/permissions.dart';
+import '../domain/money/currency.dart';
+import '../domain/money/decimal.dart';
 import '../domain/shared/business_date.dart';
 import '../domain/shared/ids.dart';
 import '../domain/transactions/financial_command.dart';
@@ -53,8 +55,15 @@ final class PostingService {
 
         await _checkParties(txn, command);
         await _checkClosedDays(txn, plan.journal, command.effectiveDate);
+        // The opening-balance cashbox limit runs first so a client-debt
+        // opening reports its specific error (amount vs cashbox balance)
+        // instead of the generic withdrawal error below.
+        _OpeningSnapshot? opening;
+        if (command is OpeningCustomerCommand) {
+          await _checkOpeningUnique(txn, command);
+          opening = await _checkOpeningFundsLimit(txn, command, currencies);
+        }
         await _checkNegativeCash(txn, [(command.effectiveDate, plan.journal)]);
-        if (command is OpeningCustomerCommand) await _checkOpeningUnique(txn, command);
 
         final id = await _insertTransaction(txn, command, plan, actor);
         await _insertJournal(txn, id, command.effectiveDate, command.description,
@@ -67,7 +76,11 @@ final class PostingService {
             entityId: '$id',
             transactionId: id,
             reason: _reasonOf(command),
-            after: {'type': command.type.name, 'lines': plan.journal.lines.length});
+            after: {
+              'type': command.type.name,
+              'lines': plan.journal.lines.length,
+              if (opening != null) ...opening.auditFields(command as OpeningCustomerCommand),
+            });
         return id;
       });
     } on DomainError catch (e) {
@@ -266,8 +279,13 @@ final class PostingService {
             idempotencyKey: Ids.editReversalKey(replacement.idempotencyKey),
             actor: actor,
             description: 'ویرایش ${_documentNo(original)}');
-        // The original's opening row was deactivated by the reversal above.
-        if (replacement is OpeningCustomerCommand) await _checkOpeningUnique(txn, replacement);
+        // The original's opening row was deactivated by the reversal above,
+        // so its reserved funds are already freed for the limit check below.
+        _OpeningSnapshot? opening;
+        if (replacement is OpeningCustomerCommand) {
+          await _checkOpeningUnique(txn, replacement);
+          opening = await _checkOpeningFundsLimit(txn, replacement, currencies);
+        }
         final id = await _insertTransaction(txn, replacement, plan, actor,
             documentNo: _documentNo(original));
         await _insertJournal(
@@ -298,6 +316,8 @@ final class PostingService {
               'date': replacement.effectiveDate.iso,
               'reversal_id': revId,
               'replacement_id': id,
+              if (opening != null)
+                ...opening.auditFields(replacement as OpeningCustomerCommand),
             });
         return id;
       });
@@ -512,6 +532,14 @@ final class PostingService {
       if (rows.isEmpty || rows.first['is_active'] != 1) {
         throw const BusinessRuleError('drawer.inactive', 'صندوق انتخاب‌شده فعال نیست.');
       }
+      // Single shared cashbox: every cash movement goes through the one
+      // main cashbox (the first drawer). Legacy extra drawers are closed
+      // for new postings (their balances were consolidated by schema v9).
+      final main = await txn.rawQuery('SELECT MIN(id) AS n FROM cash_drawers WHERE is_active = 1');
+      if (main.first['n'] != null && drawerId != main.first['n']) {
+        throw const BusinessRuleError('cashbox.nonMainDrawer',
+            'همه وجوه در صندوق اصلی مشترک نگهداری می‌شود؛ فقط صندوق اصلی برای ثبت نقد قابل استفاده است.');
+      }
     }
   }
 
@@ -539,39 +567,42 @@ final class PostingService {
     }
   }
 
-  /// Physical cash cannot be negative. Rejects the [changes] (journals to be
-  /// posted, each on its date) if a drawer's balance in any affected currency
-  /// would drop below zero on any date from the earliest change onward
-  /// (backdated outflows are checked too). Several changes are evaluated
-  /// together, so an edit is judged by its net effect, not by its reversal
-  /// half alone. Disabled when `posting.allow_negative_cash` = 1.
+  /// Unified-cashbox withdrawal limit. All cash — the exchange's own
+  /// capital and customer funds — is pooled in the single main cashbox,
+  /// so the cashbox balance of a currency is the total of every cash
+  /// account. Rejects the [changes] (journals to be posted, each on its
+  /// date) if that pooled balance would drop below zero on any date from
+  /// the earliest change onward (backdated outflows are checked too):
+  /// a withdrawal can never exceed the current cashbox balance. Several
+  /// changes are evaluated together, so an edit is judged by its net
+  /// effect, not by its reversal half alone. This limit is absolute and
+  /// has no settings override.
   Future<void> _checkNegativeCash(
       Transaction txn, List<(BusinessDate, JournalDraft)> changes) async {
-    if (await _catalog.setting('posting.allow_negative_cash', using: txn) == '1') return;
-    final deltas = <(int, String), Map<String, int>>{};
+    final deltas = <String, Map<String, int>>{};
     for (final (date, journal) in changes) {
       for (final line in journal.lines) {
         final drawerId = await _drawerForAccountRef(txn, line.account);
         if (drawerId == null) continue;
         deltas
-            .putIfAbsent((drawerId, line.currency), () => {})
+            .putIfAbsent(line.currency, () => {})
             .update(date.iso, (v) => v + line.net, ifAbsent: () => line.net);
       }
     }
-    for (final MapEntry(key: (drawerId, currency), value: byDate) in deltas.entries) {
+    for (final MapEntry(key: currency, value: byDate) in deltas.entries) {
       if (byDate.values.every((v) => v >= 0)) continue;
       final first = byDate.keys.reduce((a, b) => a.compareTo(b) <= 0 ? a : b);
       final before = await txn.rawQuery('''
         SELECT COALESCE(SUM(l.debit_minor - l.credit_minor), 0) AS b
         FROM journal_lines l JOIN accounts a ON a.id = l.account_id
-        WHERE a.drawer_id = ? AND l.currency_code = ? AND l.effective_date < ?
-      ''', [drawerId, currency, first]);
+        WHERE a.role = 'cash' AND l.currency_code = ? AND l.effective_date < ?
+      ''', [currency, first]);
       final daily = await txn.rawQuery('''
         SELECT l.effective_date AS d, SUM(l.debit_minor - l.credit_minor) AS n
         FROM journal_lines l JOIN accounts a ON a.id = l.account_id
-        WHERE a.drawer_id = ? AND l.currency_code = ? AND l.effective_date >= ?
+        WHERE a.role = 'cash' AND l.currency_code = ? AND l.effective_date >= ?
         GROUP BY l.effective_date
-      ''', [drawerId, currency, first]);
+      ''', [currency, first]);
       final nets = <String, int>{for (final r in daily) r['d'] as String: r['n'] as int};
       byDate.forEach((d, v) => nets.update(d, (n) => n + v, ifAbsent: () => v));
       var running = before.first['b'] as int;
@@ -582,7 +613,8 @@ final class PostingService {
       }
       if (minimum != null && minimum < 0) {
         throw BusinessRuleError('cash.insufficient',
-            'موجودی صندوق در $currency کافی نیست؛ این معامله موجودی را منفی می‌کند.');
+            'برداشت نمی‌تواند از موجودی فعلی صندوق اصلی مشترک بیشتر باشد؛ '
+            'موجودی صندوق در $currency برای این برداشت کافی نیست و صندوق را منفی می‌کند.');
       }
     }
   }
@@ -610,6 +642,73 @@ final class PostingService {
       throw const BusinessRuleError('opening.duplicate',
           'بیلانس افتتاحیه برای این ارز قبلاً ثبت شده است. برای تغییر، آن را برگشت کنید یا اصلاح مجاز ثبت کنید.');
     }
+  }
+
+  /// Verifies a **client-debt** opening balance (negative
+  /// [OpeningCustomerCommand.signedMinor]) against the unified cashbox,
+  /// and returns the balance snapshot used for the audit record.
+  ///
+  /// A client debt means funds were withdrawn / paid out of the cashbox
+  /// to the customer, so the amount must actually be in the fund. Rule
+  /// (stated in the UI and in the error): it may not exceed the **current
+  /// cashbox balance** in that currency on the effective date — the total
+  /// pooled cash (exchange capital + customer funds) in the single main
+  /// cashbox. Example: with AFN 20,000 in the cashbox, a debt/payout of
+  /// AFN 21,000 is blocked. Liability openings (positive) bring the
+  /// customer's own funds into the cashbox and need no such check.
+  Future<_OpeningSnapshot> _checkOpeningFundsLimit(
+      Transaction txn, OpeningCustomerCommand c, Map<String, Currency> currencies) async {
+    final snap = await _openingSnapshot(txn, c);
+    final debt = -c.signedMinor;
+    // Legacy-funded openings post against 3100 with no cash movement, so
+    // the cashbox check does not apply (no payout leaves the cashbox).
+    if (!c.legacyFunding && c.signedMinor < 0 && debt > snap.availableMinor) {
+      String fmt(int minor) =>
+          '${Decimal.fromMinor(minor, currencies[c.currency]?.precision ?? 2).toCanonical()} ${c.currency}';
+      throw BusinessRuleError(
+        'opening.debtExceedsAvailableFunds',
+        'مبلغ بدهی مشتری (${fmt(debt)}) نمی‌تواند از موجودی فعلی صندوق اصلی مشترک '
+        '(${fmt(snap.physicalMinor)}) بیشتر باشد؛ صرافی فقط تا مبلغی را می‌تواند پرداخت یا قرض داده باشد '
+        'که واقعاً در صندوق موجود است. ابتدا موجودی صندوق را بررسی کنید یا مبلغ را کاهش دهید.',
+      );
+    }
+    return snap;
+  }
+
+  /// Total cashbox cash (pooled over every cash account — the single
+  /// main cashbox), total customer liabilities held in it, and this
+  /// customer's position — in [c]'s currency, as of its effective date,
+  /// before this posting.
+  Future<_OpeningSnapshot> _openingSnapshot(Transaction txn, OpeningCustomerCommand c) async {
+    final date = c.effectiveDate.iso;
+    var physical = 0;
+    if (c.drawerId != null) {
+      final rows = await txn.rawQuery('''
+        SELECT COALESCE(SUM(l.debit_minor - l.credit_minor), 0) AS b
+        FROM journal_lines l JOIN accounts a ON a.id = l.account_id
+        WHERE a.role = 'cash' AND l.currency_code = ?
+          AND l.effective_date <= ?
+      ''', [c.currency, date]);
+      physical = rows.first['b'] as int;
+    }
+    final reservedRows = await txn.rawQuery('''
+      SELECT COALESCE(SUM(pos), 0) AS b FROM (
+        SELECT SUM(l.credit_minor - l.debit_minor) AS pos
+        FROM journal_lines l JOIN accounts a ON a.id = l.account_id
+        WHERE a.role = 'customer' AND l.currency_code = ? AND l.effective_date <= ?
+        GROUP BY a.customer_id HAVING pos > 0
+      )
+    ''', [c.currency, date]);
+    final positionRows = await txn.rawQuery('''
+      SELECT COALESCE(SUM(l.credit_minor - l.debit_minor), 0) AS b
+      FROM journal_lines l JOIN accounts a ON a.id = l.account_id
+      WHERE a.customer_id = ? AND l.currency_code = ? AND l.effective_date <= ?
+    ''', [c.customerId, c.currency, date]);
+    return _OpeningSnapshot(
+      physicalMinor: physical,
+      reservedMinor: reservedRows.first['b'] as int,
+      customerPositionMinor: positionRows.first['b'] as int,
+    );
   }
 
   /// [documentNo]: the number to show for the row; an edit passes the
@@ -827,5 +926,62 @@ final class PostingService {
     if (e.isUniqueConstraintError()) return 'رکورد تکراری؛ عملیات انجام نشد.';
     if (text.contains('FOREIGN KEY')) return 'ارجاع نامعتبر به رکورد دیگر؛ عملیات انجام نشد.';
     return 'ذخیره در پایگاه داده ناکام شد؛ هیچ تغییری ثبت نشد.';
+  }
+}
+
+/// Balances relevant to an opening customer balance, captured inside the
+/// posting transaction so the audit record can show the amount, the
+/// reason/note (the transaction description), and the affected balances
+/// before and after — alongside the audit row's actor and timestamp.
+final class _OpeningSnapshot {
+  const _OpeningSnapshot({
+    required this.physicalMinor,
+    required this.reservedMinor,
+    required this.customerPositionMinor,
+  });
+
+  /// Total cash in the unified main cashbox before the posting; it
+  /// changes by the signed opening amount (in for a liability opening,
+  /// out for a debt opening).
+  final int physicalMinor;
+
+  /// Total customer liabilities held in the cashbox (informational:
+  /// the customers' share of the pooled total).
+  final int reservedMinor;
+
+  /// This customer's position (positive = exchange owes the customer).
+  final int customerPositionMinor;
+
+  /// Withdrawable limit of the unified cashbox: its total balance.
+  /// Customer funds and own capital are pooled, so nothing is deducted.
+  int get availableMinor => physicalMinor;
+
+  Map<String, Object?> auditFields(OpeningCustomerCommand c) {
+    final newPosition = customerPositionMinor + c.signedMinor;
+    final newReserved = reservedMinor -
+        (customerPositionMinor > 0 ? customerPositionMinor : 0) +
+        (newPosition > 0 ? newPosition : 0);
+    // Cash moves by the signed amount: in for a liability opening, out
+    // for a debt opening. Legacy-funded openings move no cash.
+    final newPhysical = c.legacyFunding ? physicalMinor : physicalMinor + c.signedMinor;
+    Map<String, Object?> balances(int position, int physical, int reserved) => {
+          'customer_position_minor': position,
+          'physical_cash_minor': physical,
+          'reserved_for_customers_minor': reserved,
+          // Unified cashbox: the withdrawable balance is the total in
+          // the main fund, customer funds included.
+          'available_cash_minor': physical,
+          'cashbox_balance_minor': physical,
+        };
+    return {
+      'customer_id': c.customerId,
+      'drawer_id': c.drawerId,
+      'currency': c.currency,
+      'signed_amount_minor': c.signedMinor,
+      'direction': c.signedMinor > 0 ? 'customer_liability' : 'customer_debt',
+      'note': c.description,
+      'balances_before': balances(customerPositionMinor, physicalMinor, reservedMinor),
+      'balances_after': balances(newPosition, newPhysical, newReserved),
+    };
   }
 }

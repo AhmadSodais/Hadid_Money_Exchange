@@ -52,7 +52,9 @@ final class PlannedCustomer {
         notes: ['منتقل‌شده از برنامه قبلی (شناسه $legacyId)', ...extraNotes].join('\n'),
       );
 
-  /// Net per currency in minor units, computed exactly like the legacy app:
+  /// Net per currency in minor units (positive = customer funds held by
+  /// the exchange, negative = customer debt), computed exactly like the
+  /// legacy app:
   /// Σ income − Σ withdrawal. Positive = the exchange owes the customer.
   final Map<String, int> balances = {};
   int entryCount = 0;
@@ -382,6 +384,21 @@ final class LegacyMigrationService {
     return cash;
   }
 
+  /// The exchange's own money inside a legacy physical cash count: the
+  /// physical amount net of migration-date customer balances
+  /// (`physical − liabilities + debts`). Only this residual is initial
+  /// capital; the rest of the safe belongs to customers and enters cash
+  /// through their own opening balances.
+  static int residualCapitalMinor(
+      String currency, int physicalMinor, List<PlannedCustomer> customers) {
+    var net = 0; // signed customer total: + liability, − debt
+    for (final c in customers) {
+      if (c.isWalkIn) continue;
+      net += c.balances[currency] ?? 0;
+    }
+    return physicalMinor - net;
+  }
+
   /// Runs the import. See the class documentation for the guarantees.
   Future<LegacyImportResult> import(
     LegacyAnalysis analysis,
@@ -419,16 +436,13 @@ final class LegacyMigrationService {
     }
     final drawers = await _app.catalog.drawers();
     final drawer = drawerId ?? (drawers.where((d) => d.isActive).firstOrNull?.id);
-    // Positive customer openings debit cash, so a drawer is required whenever
-    // any customer holds a credit balance (and whenever legacy cash is imported).
-    final cashFromCustomers = <String, int>{};
-    for (final c in analysis.customers) {
-      if (c.isWalkIn) continue;
-      for (final MapEntry(key: cur, value: minor) in c.balances.entries) {
-        if (minor > 0) cashFromCustomers[cur] = (cashFromCustomers[cur] ?? 0) + minor;
-      }
-    }
-    if ((includeCash || cashFromCustomers.isNotEmpty) && drawer == null) {
+    // Every non-zero customer balance posts against the common vault
+    // (drawer) — liabilities bring customer funds in, debts pay out — so
+    // a drawer is required whenever any customer holds a balance (and
+    // whenever legacy cash is imported).
+    final hasBalances =
+        analysis.customers.any((c) => !c.isWalkIn && c.balances.values.any((v) => v != 0));
+    if ((includeCash || hasBalances) && drawer == null) {
       throw const ValidationError('legacy.noDrawer', 'هیچ صندوق فعالی برای ثبت موجودی نقد وجود ندارد.');
     }
 
@@ -442,12 +456,51 @@ final class LegacyMigrationService {
     try {
       runId = await _insertRun(analysis, 'running', startedAt, null);
 
+      if (includeCash) {
+        // The residual of the legacy physical cash after netting
+        // migration-date customer balances is the exchange's *own* money:
+        // physical − customer liabilities + customer debts (receivables).
+        // Only that residual is initial capital (3100); the customers'
+        // share enters cash through their own opening balances below.
+        for (final cash in analysis.cash.values) {
+          if (cash.amountMinor == 0) continue;
+          final residual = residualCapitalMinor(cash.currency, cash.amountMinor, analysis.customers);
+          if (residual < 0) {
+            throw ValidationError(
+              'legacy.cashLessThanLiabilities',
+              'موجودی نقد ${cash.currency} برنامه قبلی از مجموع خالص طلب مشتریان کمتر است؛ انتقال ممکن نیست.',
+            );
+          }
+          if (residual == 0) continue; // the safe holds only customers' money
+          await _app.posting.post(
+            OpeningCashCommand(
+              idempotencyKey: '$keyPrefix-CASH-${cash.currency}',
+              effectiveDate: date,
+              drawerId: drawer!,
+              currency: cash.currency,
+              amountMinor: residual,
+              description: 'سرمایه اولیه (خالص مالکیت صرافی) از بیلانس ${cash.legacyDate} برنامه قبلی',
+            ),
+            actor,
+          );
+          cashPosted++;
+        }
+      }
+
       for (final c in analysis.customers) {
         if (c.isWalkIn) continue;
         final record = await _app.customers.create(c.input, actor, legacyId: 'legacy:${c.legacyId}');
         created++;
         for (final MapEntry(key: cur, value: minor) in c.balances.entries) {
           if (minor == 0) continue;
+          // Without imported cash the vault starts empty; a debtor
+          // opening whose currency was not imported would pay out cash
+          // that is not there. Legacy replays raw balances and never
+          // used the capital counter-account for this, so fund only
+          // those currencies from that account as before. Debts in
+          // imported currencies are covered by the physical cash above
+          // and debt-exceeds-available check (validation only).
+          final fundFromCapital = !includeCash || !analysis.cash.containsKey(cur);
           await _app.posting.post(
             OpeningCustomerCommand(
               idempotencyKey: '$keyPrefix-C${c.legacyId}-$cur',
@@ -455,8 +508,9 @@ final class LegacyMigrationService {
               customerId: record.id,
               currency: cur,
               signedMinor: minor,
-              drawerId: minor > 0 ? drawer : null,
+              drawerId: drawer,
               description: 'مانده منتقل‌شده از برنامه قبلی',
+              legacyFunding: fundFromCapital,
             ),
             actor,
           );
@@ -474,32 +528,8 @@ final class LegacyMigrationService {
       }
 
       if (includeCash) {
-        // Customer credit openings already increased cash; post only the
-        // residual so the vault matches the legacy physical count.
-        for (final cash in analysis.cash.values) {
-          if (cash.amountMinor == 0) continue;
-          final alreadyInCash = cashFromCustomers[cash.currency] ?? 0;
-          final residual = cash.amountMinor - alreadyInCash;
-          if (residual < 0) {
-            throw ValidationError(
-              'legacy.cashLessThanLiabilities',
-              'موجودی نقد ${cash.currency} برنامه قبلی از مجموع طلب مشتریان کمتر است؛ انتقال ممکن نیست.',
-            );
-          }
-          if (residual == 0) continue;
-          await _app.posting.post(
-            OpeningCashCommand(
-              idempotencyKey: '$keyPrefix-CASH-${cash.currency}',
-              effectiveDate: date,
-              drawerId: drawer!,
-              currency: cash.currency,
-              amountMinor: residual,
-              description: 'موجودی نقد منتقل‌شده از بیلانس ${cash.legacyDate} برنامه قبلی',
-            ),
-            actor,
-          );
-          cashPosted++;
-        }
+        // Residual capital + customer balances must rebuild the legacy
+        // physical count in the drawer exactly (validation only).
         final posted = await _app.queries.cashBalances(drawerId: drawer);
         for (final cash in analysis.cash.values) {
           if ((posted[cash.currency] ?? 0) != cash.amountMinor) {

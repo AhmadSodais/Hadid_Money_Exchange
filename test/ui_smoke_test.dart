@@ -305,7 +305,9 @@ void main() {
           }
           if (label == 'ارز و صندوق') {
             expect(find.text('ارز جدید'), findsOneWidget);
-            expect(find.text('صندوق جدید'), findsOneWidget);
+            // Single-cashbox model: no new drawer can be created.
+            expect(find.text('صندوق جدید'), findsNothing);
+            expect(find.text('صندوق اصلی مشترک'), findsWidgets);
             expect(find.text('صندوق اصلی'), findsWidgets);
           }
           if (label == 'مدیریت داده‌ها') {

@@ -188,27 +188,59 @@ final class PostingRules {
     _namedCustomer(c.customerId, 'بیلانس افتتاحیه');
     final amount = c.signedMinor.abs();
     final customer = CustomerAccountRef(c.customerId);
-    // Positive: customer deposited funds the exchange holds — same as a
-    // receipt (cash in vault rises, customer position rises).
-    if (c.signedMinor > 0) {
-      final drawerId = c.drawerId;
-      if (drawerId == null) {
-        throw const ValidationError('drawer.required',
-            'برای بیلانس افتتاحیه طلب مشتری باید صندوق انتخاب شود.',
-            field: 'drawer');
+    // Initial capital (3100) is the exchange's *own* funds only and is
+    // posted exclusively by opening cash. Customer opening balances never
+    // touch it: the exchange's and the customers' funds sit in one common
+    // vault (the drawer), and each opening balance records one customer's
+    // share of it against cash — exactly like a receipt/payment pair.
+    final drawerId = c.drawerId;
+    if (drawerId == null) {
+      throw const ValidationError('drawer.required',
+          'برای بیلانس افتتاحیه مشتری باید صندوق انتخاب شود.',
+          field: 'drawer');
+    }
+    final cash = CashAccountRef(drawerId);
+    if (c.legacyFunding) {
+      // Legacy migration only, for currencies whose physical cash was
+      // not imported: replay the raw balance against the capital
+      // counter-account exactly like the historical legacy behavior
+      // (no cash movement, no vault availability check).
+      if (c.signedMinor > 0) {
+        return PostingPlan(
+          journal: JournalDraft([
+            JournalLineDraft.debit(_openingEquity, c.currency, amount),
+            JournalLineDraft.credit(customer, c.currency, amount),
+          ]),
+        );
       }
       return PostingPlan(
         journal: JournalDraft([
-          JournalLineDraft.debit(CashAccountRef(drawerId), c.currency, amount),
+          JournalLineDraft.debit(customer, c.currency, amount),
+          JournalLineDraft.credit(_openingEquity, c.currency, amount),
+        ]),
+      );
+    }
+    // Positive (customer liability — طلب مشتری): funds the customer holds
+    // with the exchange in the main cashbox. Cash and the liability rise
+    // together into the one pooled fund; the customer's share of the
+    // cashbox total is informational and own capital is unchanged.
+    if (c.signedMinor > 0) {
+      return PostingPlan(
+        journal: JournalDraft([
+          JournalLineDraft.debit(cash, c.currency, amount),
           JournalLineDraft.credit(customer, c.currency, amount),
         ]),
       );
     }
-    // Negative: customer owes the exchange (receivable) — no cash movement.
+    // Negative (customer debt — بدهی مشتری): funds that were withdrawn /
+    // paid out of the main cashbox to the customer. Cash falls; when the
+    // customer later pays, a receipt brings the cash back into the same
+    // cashbox. The posting service rejects amounts above the current
+    // cashbox balance (see `opening.debtExceedsAvailableFunds`).
     return PostingPlan(
       journal: JournalDraft([
         JournalLineDraft.debit(customer, c.currency, amount),
-        JournalLineDraft.credit(_openingEquity, c.currency, amount),
+        JournalLineDraft.credit(cash, c.currency, amount),
       ]),
     );
   }

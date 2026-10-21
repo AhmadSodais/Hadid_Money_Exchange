@@ -548,6 +548,7 @@ class _CapitalSectionState extends State<_CapitalSection> with RevisionReload {
       padding: m.cardPadding,
       footer: const SettingsFooterNote(
         'اولین سرمایه هر ارز در هر صندوق «سرمایه اولیه» و هر مبلغ بعدی «افزایش سرمایه» است و به موجودی صندوق اضافه می‌شود. '
+        'سرمایه اولیه فقط پول خود صرافی است؛ بیلانس افتتاحیه مشتری (طلب یا بدهی) هرگز این رقم را تغییر نمی‌دهد، هرچند پول صرافی و مشتری در یک صندوق مشترک نگهداری می‌شود. '
         'برای مشاهده، ویرایش یا حذف، از منوی ⋮ هر ردیف در «سوابق سرمایه» استفاده کنید؛ سابقه برای ممیزی حفظ می‌شود.',
         warning: false,
       ),
@@ -609,7 +610,7 @@ class _CapitalSectionState extends State<_CapitalSection> with RevisionReload {
     return LedgerTable(
       shrinkWrap: true,
       title: 'سرمایه فعلی',
-      subtitle: 'مجموع سرمایه اولیه و افزایش‌های سرمایه هر صندوق به تفکیک ارز.',
+      subtitle: 'مجموع سرمایه اولیه و افزایش‌های سرمایه صندوق اصلی مشترک به تفکیک ارز.',
       itemLabel: 'ردیف',
       minWidth: 760,
       showRowNumbers: false,
@@ -812,17 +813,15 @@ class _DrawersTableState extends State<_DrawersTable> with RevisionReload {
     final list = s.drawers;
     return LedgerTable(
       shrinkWrap: true,
-      title: 'صندوق‌ها',
-      subtitle: 'هر صندوق موجودی، سرمایه اولیه و بیلانس روزانه جداگانه دارد. '
-          'صندوق با موجودی غیرصفر قابل غیرفعال کردن نیست.',
+      title: 'صندوق اصلی مشترک',
+      subtitle: 'یک صندوق واحد برای همه وجوه: سرمایه خود صرافی و پول مشتریان در همین صندوق جمع می‌شود '
+          'و سقف هر برداشت، موجودی کل همین صندوق است. صندوق جداگانه ساخته نمی‌شود؛ '
+          'صندوق‌های قدیمی در صندوق اصلی تجمیع و غیرفعال شده‌اند و فقط برای سابقه دیده می‌شوند.',
       itemLabel: 'صندوق',
       minWidth: 680,
       showRowNumbers: false,
       emptyText: 'صندوقی تعریف نشده است.',
-      actions: [
-        if (canManage)
-          GfPrimaryButton(label: 'صندوق جدید', icon: Icons.add, onPressed: () => _DrawerDialog.show(context)),
-      ],
+      actions: const [],
       columns: [
         const LedgerColumn.code(),
         const LedgerColumn.primary('صندوق'),

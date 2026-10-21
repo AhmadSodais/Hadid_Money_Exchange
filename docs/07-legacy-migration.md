@@ -37,7 +37,7 @@ Settings → «انتقال اطلاعات برنامه قبلی» (needs the op
 
 The old app computed each customer's balance per currency as **Σ income − Σ withdrawal**, treated unparseable amounts as zero, and ignored unknown currencies. The importer reproduces exactly that figure so the first statement in the new app matches what the owner last saw. Currency names map as افغانی→AFN, دالر→USD, یورو→EUR, تومان→IRT, کالدار→PKR.
 
-Each non-zero balance becomes an opening customer balance (`Dr/Cr 3100` against the customer). Cash becomes opening cash for the main drawer.
+The latest legacy physical count is *not* initial capital as-is: each currency's **residual — physical − net migration-date customer balances (liabilities − debts) — is the exchange's own money** and is posted as opening cash (3100) into the single main cashbox (rejected when negative). Each non-zero balance then becomes an opening customer balance against the cashbox (a liability brings the customer's funds into the fund; a debt pays out, covered by the physical cash so the cashbox-balance check passes). After posting, the cashbox must equal the legacy physical count exactly. When legacy cash is not imported (or for a currency missing from it), customer balances keep the historical behavior — funds are provided through the capital counter-account (`legacyFunding`) so no cash appears from nowhere and debtor balances stay valid; old debtor openings can likewise be cleaned up from the Settings capital section, whose totals now exclude customer funds entirely.
 
 ## Issue codes
 

@@ -104,7 +104,7 @@ class _CashTransactionPageState extends State<CashTransactionPage> with Revision
   Future<void> _submit() async {
     final currency = _currency, drawer = _drawerId;
     if (currency == null || drawer == null) {
-      GfToast.error(context, 'صندوق و ارز را انتخاب کنید.');
+      GfToast.error(context, 'صندوق اصلی و ارز را انتخاب کنید.');
       return;
     }
     final minor = MoneyFormat.tryParse(_amount.text, currency);
@@ -199,11 +199,11 @@ class _CashTransactionPageState extends State<CashTransactionPage> with Revision
     final date = BusinessDateField(value: _date, onChanged: (d) => setState(() => _date = d));
     return WorkbenchSection(
       step: 1,
-      title: _needsCustomer ? 'مشتری و صندوق' : 'صندوق و تاریخ',
+      title: _needsCustomer ? 'مشتری و صندوق اصلی' : 'صندوق اصلی و تاریخ',
       subtitle: switch (_kind) {
-        _CashKind.receipt => 'نقد از کدام مشتری و در کدام صندوق دریافت می‌شود؟',
-        _CashKind.payment => 'نقد به کدام مشتری و از کدام صندوق پرداخت می‌شود؟',
-        _CashKind.expense => 'مصرف از کدام صندوق پرداخت می‌شود؟',
+        _CashKind.receipt => 'نقد از کدام مشتری دریافت و به صندوق اصلی مشترک اضافه می‌شود؟',
+        _CashKind.payment => 'نقد به کدام مشتری از صندوق اصلی مشترک پرداخت می‌شود؟ (حداکثر تا موجودی کل صندوق)',
+        _CashKind.expense => 'مصرف از صندوق اصلی مشترک پرداخت می‌شود؟ (حداکثر تا موجودی کل صندوق)',
       },
       padding: m.cardPadding,
       child: Column(
@@ -333,16 +333,20 @@ class _CashTransactionPageState extends State<CashTransactionPage> with Revision
           amountColor: cashAfter < 0 ? AppColors.error : null,
         ),
         Divider(height: 1, color: AppColors.divider),
-        WorkbenchValueRow(label: 'صندوق', value: drawerName ?? '—'),
+        WorkbenchValueRow(label: 'صندوق اصلی', value: drawerName ?? '—'),
         WorkbenchValueRow(label: 'تاریخ', value: DateFormatFa.business(_date)),
         WorkbenchBalanceChange(
           icon: Icons.point_of_sale_outlined,
-          label: 'موجودی نقد ${currency.nameFa} در صندوق',
+          label: 'موجودی نقد ${currency.nameFa} در صندوق اصلی مشترک',
           before: MoneyFormat.amount(cash, currency),
           after: MoneyFormat.amount(cashAfter, currency),
           afterColor: cashAfter < 0 ? AppColors.error : (incoming ? AppColors.success : null),
         ),
-        if (cashAfter < 0) const InfoBanner('موجودی صندوق برای این پرداخت کافی نیست.', tone: BannerTone.error),
+        if (cashAfter < 0)
+          const InfoBanner(
+            'این برداشت نمی‌تواند از موجودی فعلی صندوق اصلی مشترک بیشتر باشد؛ مبلغ را تا سقف موجودی صندوق کم کنید.',
+            tone: BannerTone.error,
+          ),
         if (_needsCustomer)
           WorkbenchBalanceChange(
             icon: Icons.account_balance_wallet_outlined,

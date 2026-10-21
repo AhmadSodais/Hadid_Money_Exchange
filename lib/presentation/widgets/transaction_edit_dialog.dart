@@ -254,7 +254,7 @@ class _TransactionEditDialogState extends State<TransactionEditDialog> {
             customerId: _customerId!,
             currency: c.code,
             signedMinor: _owesCustomer ? minor : -minor,
-            drawerId: _owesCustomer ? drawerId : null);
+            drawerId: drawerId);
     }
   }
 
@@ -409,13 +409,11 @@ class _TransactionEditDialogState extends State<TransactionEditDialog> {
             expand: true,
             onChanged: (v) => setState(() => _owesCustomer = v),
           ),
-          if (_owesCustomer) ...[
-            const SizedBox(height: 12),
-            DrawerPicker(
-              value: _drawerId,
-              onChanged: (id) => setState(() => _drawerId = id),
-            ),
-          ],
+          const SizedBox(height: 12),
+          DrawerPicker(
+            value: _drawerId,
+            onChanged: (id) => setState(() => _drawerId = id),
+          ),
         ],
       ],
     );

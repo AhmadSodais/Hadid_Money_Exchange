@@ -75,14 +75,11 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   _installWindowsKeyboardGuards();
   ShamsiDates.bindPicker(GfShamsiDatePicker.show);
-
   EasyLocalization.logger.enableBuildModes = const [];
   await EasyLocalization.ensureInitialized();
-
   final prefs = await SharedPreferences.getInstance();
   await prefs.remove('locale');
   AppCalendar.apply(AppCalendarType.solar);
-
   AppSession? session;
   String? startupError;
   String? startupWarning;

@@ -19,7 +19,8 @@ enum AccountRole {
   /// Debit balance = customer owes the exchange (receivable).
   customer,
 
-  /// Opening capital / opening balances counter-account.
+  /// The exchange's own initial capital (and later capital injections).
+  /// Only opening cash posts here; customer opening balances never do.
   openingEquity,
 
   /// Currency trading (position) account used by buy/sell. Keeps every

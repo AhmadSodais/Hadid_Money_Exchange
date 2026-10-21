@@ -13,8 +13,9 @@ import '../support/harness.dart';
 /// C: receive 1,000 AFN from customer K.  D: pay 200 AFN to customer K.
 ///
 /// Customer K is defined with an opening position of −800 AFN (K owes the
-/// exchange 800). C settles that debt and leaves +200 owed to K; D pays the
-/// 200 out, so K ends at 0.
+/// exchange 800 — the 800 was paid out of the vault when the debt arose,
+/// so opening AFN cash drops from 100,000 to 99,200). C settles that
+/// debt and leaves +200 owed to K; D pays the 200 out, so K ends at 0.
 void main() {
   late Harness h;
   late int customerK;
@@ -33,6 +34,7 @@ void main() {
         customerId: customerK,
         currency: 'AFN',
         signedMinor: -afn(800),
+        drawerId: 1,
       ),
       h.owner,
     );
@@ -85,8 +87,8 @@ void main() {
     expect(ledgerUsd.last.running, usdMinor, reason: 'account statement USD');
   }
 
-  test('balances agree across every view: AFN 97,350 and USD 2,050', () async {
-    await expectCashEverywhere(afnMinor: afn(97350), usdMinor: usd(2050));
+  test('balances agree across every view: AFN 96,550 and USD 2,050', () async {
+    await expectCashEverywhere(afnMinor: afn(96550), usdMinor: usd(2050));
   });
 
   test('customer K consequences follow the settlement purpose', () async {
@@ -109,7 +111,7 @@ void main() {
     expect(detail.rate, '71');
   });
 
-  test('reversing B gives AFN 93,800 and USD 2,100 everywhere', () async {
+  test('reversing B gives AFN 93,000 and USD 2,100 everywhere', () async {
     final rev = await h.reverse(txB.id);
     expect(rev.type, TransactionType.reversal);
     expect(rev.reversesTransactionId, txB.id);
@@ -117,7 +119,7 @@ void main() {
     expect(original.status, TransactionStatus.reversed);
     expect(original.reversedByTransactionId, rev.id);
 
-    await expectCashEverywhere(afnMinor: afn(93800), usdMinor: usd(2100));
+    await expectCashEverywhere(afnMinor: afn(93000), usdMinor: usd(2100));
     expect(await h.app.queries.integrityProblems(), isEmpty);
   });
 
