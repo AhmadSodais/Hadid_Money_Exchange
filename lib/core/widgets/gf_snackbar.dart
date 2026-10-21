@@ -95,45 +95,93 @@ class GfSnackbarHost extends StatelessWidget {
   }
 }
 
-class _SnackbarStack extends StatelessWidget {
+class _SnackbarStack extends StatefulWidget {
   const _SnackbarStack();
+
+  @override
+  State<_SnackbarStack> createState() => _SnackbarStackState();
+}
+
+class _SnackbarStackState extends State<_SnackbarStack> {
+  /// Ids of cards the user expanded with "more". While any card is
+  /// expanded, tapping anywhere outside the snackbar dismisses it.
+  final Set<String> _expandedIds = {};
+
+  Widget _card(SnackbarViewModel vm, SnackbarModel item, bool isRtl, {required bool spaced}) {
+    final card = GfSnackbarCard(
+      key: ValueKey(item.id),
+      model: item,
+      slideFromEnd: true,
+      isRtl: isRtl,
+      onClose: () => vm.dismiss(item.id),
+      onExpandedChanged: (expanded) {
+        setState(() {
+          if (expanded) {
+            _expandedIds.add(item.id);
+          } else {
+            _expandedIds.remove(item.id);
+          }
+        });
+        if (expanded) {
+          // Keep the card while the user is reading.
+          vm.pauseDismiss(item.id);
+        } else {
+          vm.resumeDismiss(item.id);
+        }
+      },
+    );
+    return spaced ? Padding(padding: const EdgeInsets.only(top: 10), child: card) : card;
+  }
 
   @override
   Widget build(BuildContext context) {
     final vm = context.watch<SnackbarViewModel>();
     final items = vm.items;
     if (items.isEmpty) return const SizedBox.shrink();
+    // Forget expansions of cards that are already gone.
+    _expandedIds.removeWhere((id) => items.every((e) => e.id != id));
 
     final isRtl = Directionality.of(context) == TextDirection.rtl;
 
-    return Align(
-      alignment: AlignmentDirectional.bottomEnd,
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(minWidth: 280, maxWidth: 380),
-          child: Material(
-            type: MaterialType.transparency,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                // Newest closest to the bottom edge.
-                for (var i = items.length - 1; i >= 0; i--) ...[
-                  if (i < items.length - 1) const SizedBox(height: 10),
-                  GfSnackbarCard(
-                    key: ValueKey(items[i].id),
-                    model: items[i],
-                    slideFromEnd: true,
-                    isRtl: isRtl,
-                    onClose: () => vm.dismiss(items[i].id),
-                  ),
-                ],
-              ],
+    final cards = <Widget>[
+      // Newest closest to the bottom edge.
+      for (var i = items.length - 1; i >= 0; i--)
+        _card(vm, items[i], isRtl, spaced: i < items.length - 1),
+    ];
+
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        if (_expandedIds.isNotEmpty)
+          Positioned.fill(
+            child: GestureDetector(
+              behavior: HitTestBehavior.translucent,
+              onTap: () {
+                // Tap outside an expanded snackbar: dismiss it.
+                for (final id in _expandedIds.toList()) {
+                  vm.dismiss(id);
+                }
+              },
+            ),
+          ),
+        Align(
+          alignment: AlignmentDirectional.bottomEnd,
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(minWidth: 280, maxWidth: 380),
+              child: Material(
+                type: MaterialType.transparency,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: cards,
+                ),
+              ),
             ),
           ),
         ),
-      ),
+      ],
     );
   }
 }
@@ -145,12 +193,16 @@ class GfSnackbarCard extends StatefulWidget {
     required this.onClose,
     this.slideFromEnd = true,
     this.isRtl = false,
+    this.onExpandedChanged,
   });
 
   final SnackbarModel model;
   final VoidCallback onClose;
   final bool slideFromEnd;
   final bool isRtl;
+
+  /// Called when the user expands/collapses a long message via "more".
+  final ValueChanged<bool>? onExpandedChanged;
 
   @override
   State<GfSnackbarCard> createState() => _GfSnackbarCardState();
@@ -162,6 +214,36 @@ class _GfSnackbarCardState extends State<GfSnackbarCard>
   late final Animation<Offset> _slide;
   late final Animation<double> _fade;
   Timer? _tick;
+
+  /// True after the user taps "more" on a long message: the full text is
+  /// shown (wrapped over as many lines as it needs) until the user
+  /// collapses it, closes the card, or taps outside the snackbar.
+  bool _expanded = false;
+
+  /// A message counts as long — and gets a "more" toggle — when it is
+  /// likely to be clipped at the collapsed line limit: more than ~90
+  /// characters, or explicit line breaks beyond two lines.
+  bool get _isLong {
+    final m = widget.model;
+    final text = '${m.title}\n${m.message ?? ''}';
+    return text.length > 90 || '\n'.allMatches(text).length > 1;
+  }
+
+  void _setExpanded(bool value) {
+    if (_expanded == value) return;
+    setState(() => _expanded = value);
+    widget.onExpandedChanged?.call(value);
+  }
+
+  TextStyle _messageStyle(BuildContext context, _SbColors colors) => AppTypography.localize(
+        TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w400,
+          height: 1.35,
+          color: colors.description,
+        ),
+        context: context,
+      );
 
   @override
   void initState() {
@@ -286,31 +368,66 @@ class _GfSnackbarCardState extends State<GfSnackbarCard>
                                 model.title,
                                 style: AppTypography.localize(
                                   TextStyle(
-                                    fontSize: 14,
+                                    fontSize: 13,
                                     fontWeight: FontWeight.w600,
-                                    height: 1.25,
+                                    height: 1.3,
                                     color: colors.title,
                                   ),
                                   context: context,
                                 ),
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
+                                // Wrap onto the next lines instead of
+                                // clipping with an ellipsis; collapsed
+                                // cards cap at 3 lines, expanded show all.
+                                softWrap: true,
+                                maxLines: _expanded ? null : 3,
                               ),
                               if (hasMessage) ...[
                                 const SizedBox(height: 2),
-                                Text(
-                                  model.message!,
-                                  style: AppTypography.localize(
-                                    TextStyle(
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w400,
-                                      height: 1.3,
-                                      color: colors.description,
+                                if (_expanded)
+                                  // Very long text scrolls inside the
+                                  // card instead of overflowing the screen.
+                                  ConstrainedBox(
+                                    constraints: BoxConstraints(
+                                      maxHeight: MediaQuery.sizeOf(context).height * 0.45,
                                     ),
-                                    context: context,
+                                    child: SingleChildScrollView(
+                                      child: Text(
+                                        model.message!,
+                                        style: _messageStyle(context, colors),
+                                        softWrap: true,
+                                      ),
+                                    ),
+                                  )
+                                else
+                                  Text(
+                                    model.message!,
+                                    style: _messageStyle(context, colors),
+                                    softWrap: true,
+                                    maxLines: 3,
                                   ),
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
+                              ],
+                              if (_isLong) ...[
+                                const SizedBox(height: 4),
+                                Align(
+                                  alignment: AlignmentDirectional.centerStart,
+                                  child: InkWell(
+                                    onTap: () => _setExpanded(!_expanded),
+                                    borderRadius: BorderRadius.circular(6),
+                                    child: Padding(
+                                      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                                      child: Text(
+                                        '${(_expanded ? 'snackbar.less' : 'snackbar.more').tr()} ${_expanded ? '▴' : '▾'}',
+                                        style: AppTypography.localize(
+                                          TextStyle(
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.w600,
+                                            color: accent,
+                                          ),
+                                          context: context,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
                                 ),
                               ],
                             ],

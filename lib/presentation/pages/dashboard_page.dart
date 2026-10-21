@@ -128,10 +128,8 @@ class _DashboardPageState extends State<DashboardPage> with RevisionReload {
                 }),
                 const SizedBox(height: AppSpacing.sm),
                 Text(
-                  'صندوق اصلی مشترک: یک صندوق واحد که سرمایه خود صرافی و وجوه مشتریان همه در آن جمع است (به تفکیک ارز). '
-                  'سقف هر برداشت — برد، مصرف، پرداخت تبادله و بدهی افتتاحیه مشتری — همین موجودی کل صندوق است و برداشت بیشتر از آن ثبت نمی‌شود. '
-                  'سهم خود صرافی در صندوق = موجودی کل - وجوه مشتریان؛ سرمایه خود صرافی = سهم خود + بدهی مشتریان. '
-                  'سرمایه اولیه فقط پول خود صرافی است؛ بیلانس افتتاحیه مشتری هرگز آن را تغییر نمی‌دهد.',
+                  'موجودی کل صندوق: نقد همه صندوق‌ها با هم. '
+                  'سرمایه خود صرافی = موجودی کل صندوق - طلب مشتریان + بدهی مشتریان.',
                   style: AppTypography.caption.copyWith(color: AppColors.textSecondary),
                 ),
                 const SizedBox(height: AppSpacing.md),
@@ -174,24 +172,18 @@ class _CurrencyCard extends StatelessWidget {
 
   final Currency currency;
 
-  /// Total of the single shared main cashbox (own capital + customer
-  /// funds pooled). This total is the withdrawal limit for the currency.
+  /// Cash of every drawer together.
   final int cash;
   final int owedToCustomers;
   final int owedByCustomers;
 
-  /// The exchange's own share of the cashbox: total minus the part that
-  /// belongs to customers (their liabilities held in the fund).
-  int get availableCash => cash - owedToCustomers;
-
-  /// What belongs to the exchange itself: available cash plus what
-  /// customers owe it. Customer-held funds are never part of this.
-  int get ownCapital => availableCash + owedByCustomers;
+  /// What belongs to the exchange itself: the cash it holds, less what it
+  /// owes customers, plus what customers owe it.
+  int get ownCapital => cash - owedToCustomers + owedByCustomers;
 
   @override
   Widget build(BuildContext context) {
     final own = ownCapital;
-    final available = availableCash;
     return GfKpiCard(
       title: '${currency.nameFa} (${currency.code})',
       icon: AppAssets.currenciesFilled,
@@ -200,19 +192,13 @@ class _CurrencyCard extends StatelessWidget {
       currencies: [
         GfKpiCurrencyLine(
           amountText: MoneyFormat.amount(cash, currency),
-          currencyLabel: 'موجودی صندوق اصلی مشترک',
+          currencyLabel: 'موجودی کل صندوق',
           color: cash < 0 ? AppColors.error : null,
           emphasized: true,
         ),
         GfKpiCurrencyLine(
           amountText: MoneyFormat.amount(owedToCustomers, currency),
-          currencyLabel: 'وجوه مشتریان داخل صندوق',
-        ),
-        GfKpiCurrencyLine(
-          amountText: MoneyFormat.amount(available, currency),
-          currencyLabel: 'سهم خود صرافی در صندوق',
-          color: available < 0 ? AppColors.error : null,
-          emphasized: true,
+          currencyLabel: 'طلب مشتریان',
         ),
         GfKpiCurrencyLine(
           amountText: MoneyFormat.amount(owedByCustomers, currency),

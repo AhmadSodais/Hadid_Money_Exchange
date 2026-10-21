@@ -1950,7 +1950,9 @@
   "snackbar": {
     "justNow": "همین الان",
     "secondsAgo": "{n} ثانیه پیش",
-    "minutesAgo": "{n} دقیقه پیش"
+    "minutesAgo": "{n} دقیقه پیش",
+    "more": "بیشتر",
+    "less": "کمتر"
   },
   "sync": {
     "title": "مرکز همگام‌سازی",

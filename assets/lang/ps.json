@@ -1741,7 +1741,9 @@
   "snackbar": {
     "justNow": "همدا اوس",
     "secondsAgo": "{n} ثانیې مخکې",
-    "minutesAgo": "{n} دقیقې مخکې"
+    "minutesAgo": "{n} دقیقې مخکې",
+    "more": "نور",
+    "less": "لږ"
   },
   "sync": {
     "title": "همغږي مرکز",

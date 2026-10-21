@@ -73,6 +73,19 @@ class SnackbarViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Pauses the auto-dismiss timer (e.g. while the user has expanded a
+  /// long message with "more" and is still reading it).
+  void pauseDismiss(String id) => _cancelTimer(id);
+
+  /// Resumes auto-dismiss for a previously paused snackbar.
+  void resumeDismiss(String id, {Duration duration = const Duration(seconds: 4)}) {
+    final i = _items.indexWhere((e) => e.id == id);
+    if (i < 0) return;
+    _cancelTimer(id);
+    if (duration <= Duration.zero) return;
+    _timers[id] = Timer(duration, () => dismiss(id));
+  }
+
   void dismiss(String id) {
     final before = _items.length;
     _items.removeWhere((e) => e.id == id);

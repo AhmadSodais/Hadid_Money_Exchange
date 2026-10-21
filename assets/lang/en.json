@@ -1893,7 +1893,9 @@
   "snackbar": {
     "justNow": "Just now",
     "secondsAgo": "{n}s ago",
-    "minutesAgo": "{n}m ago"
+    "minutesAgo": "{n}m ago",
+    "more": "More",
+    "less": "Less"
   },
   "sync": {
     "title": "Sync Center",
