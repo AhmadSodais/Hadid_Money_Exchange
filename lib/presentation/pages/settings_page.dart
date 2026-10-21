@@ -29,6 +29,7 @@ import '../format/money_format.dart';
 import '../providers/app_settings_provider.dart';
 import '../session/app_session.dart';
 import '../widgets/app_lock_settings_card.dart';
+import '../widgets/app_update_card.dart';
 import '../widgets/app_shell.dart';
 import '../widgets/exchange_ui.dart';
 import '../widgets/legacy_import_card.dart';
@@ -49,6 +50,7 @@ enum _Section {
   legacyImport,
   audit,
   appearance,
+  updates,
   about,
 }
 
@@ -83,6 +85,7 @@ class _SettingsPageState extends State<SettingsPage> {
     SettingsNavEntry(_Section.legacyImport, Icons.move_down, 'انتقال از برنامه قبلی'),
     SettingsNavEntry(_Section.audit, Icons.fact_check_outlined, 'سوابق ممیزی و صحت دفاتر'),
     SettingsNavEntry(_Section.appearance, Icons.palette_outlined, 'ظاهر'),
+    SettingsNavEntry(_Section.updates, Icons.system_update_alt_outlined, 'به‌روزرسانی برنامه'),
     SettingsNavEntry(_Section.about, Icons.info_outline, 'درباره برنامه'),
   ];
 
@@ -201,6 +204,7 @@ class _SettingsContent extends StatelessWidget {
           const SizedBox(height: 560, child: _AuditTable()),
         ],
       _Section.appearance => [_AppearanceCard(metrics: metrics)],
+      _Section.updates => [AppUpdateCard(padding: metrics.cardPadding)],
       _Section.about => [_AboutCard(metrics: metrics)],
     };
 

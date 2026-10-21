@@ -1,7 +1,7 @@
 name: hadid_exchange
 description: "Hadid Money Exchange — offline currency exchange accounting for Windows."
 publish_to: 'none'
-version: 1.0.0+1
+version: 1.0.1+2
 
 environment:
   sdk: ^3.12.2
@@ -23,11 +23,21 @@ dependencies:
   sqflite_common_ffi: ^2.4.2
   shared_preferences: ^2.5.3
   file_picker: ^10.2.0
-  excel: ^4.0.6
+  # Pinned to the official repo's unpublished 5.0.0 (archive ^4, required by
+  # desktop_updater). Hosted excel 4.0.6 pins archive ^3 and no longer
+  # compiles against archive 4. Switch back to hosted `excel: ^5.0.0`
+  # once 5.0.0 is published on pub.dev.
+  excel:
+    git:
+      url: https://github.com/justkawal/excel.git
+      ref: 751dfc597c893a0b34eccfe6921f126e03a5c683
   shamsi_date: ^1.1.1
   persian_datetime_picker: ^3.2.0
   crypto: ^3.0.7
   hijri: ^3.0.1
+  # Exact pin (no ^): 2.7+ switched to a signed schema-v3 feed that is
+  # incompatible with the app-archive.json manifest flow used by this app.
+  desktop_updater: 2.0.0-dev.2
 
 dev_dependencies:
   flutter_test:
