@@ -1,0 +1,437 @@
+[
+  {
+    "path": "dartjni.dll",
+    "calculatedHash": "Q6zg9kl6QWGR8GirAwH6v7cGt7FfYrZgxJNr836GscQ3FCA8cy/6o3BbHbXJ2HdzqtPLqD05c29ttHupzEPTLg==",
+    "length": 58368
+  },
+  {
+    "path": "data/app.so",
+    "calculatedHash": "L85LOzZ0DTXwCxRmOP8EqMeeDYFcI482lLTwT/SGH04yoLyo49CrFxYDfoAobR1MGAfP2rxwATJnmb0lIfgdjQ==",
+    "length": 11076496
+  },
+  {
+    "path": "data/flutter_assets/AssetManifest.bin",
+    "calculatedHash": "Yt59/gCeeut2Z/G8BDN5IVH2+vRwKwwWPDzSsTeOgs8SXddHjidQZv4KB0qj5JjaC5ZDkc6OQgd7WhhPgFVFxQ==",
+    "length": 5469
+  },
+  {
+    "path": "data/flutter_assets/FontManifest.json",
+    "calculatedHash": "DcJQBSg/bumv78sOSV9iwY/8FeXJqRa3s21R1smWJXXGO9AJh5f68QOWzluOJAus+6KKizkNR9mCrV/Iny/2IQ==",
+    "length": 1348
+  },
+  {
+    "path": "data/flutter_assets/NOTICES.Z",
+    "calculatedHash": "c3vB5JU8WgZ2tb1MKiR5JfXAPh7VaNW0N2qjbcCkgIiN3IFdDWavW4wv5Anug8L8d4WszxGVzYpoY8iETvsD4g==",
+    "length": 111669
+  },
+  {
+    "path": "data/flutter_assets/NativeAssetsManifest.json",
+    "calculatedHash": "L9xPKd27OYYvcZ2VwFDtteIdVwtU49/20tPYuuUIILqFzaDAGBo2TOhJHvPs31SuzeJSw14Pf+qK5B4bn6BDvQ==",
+    "length": 131
+  },
+  {
+    "path": "data/flutter_assets/assets/fonts/Inter-VariableFont_opsz,wght.ttf",
+    "calculatedHash": "Mtmu57ZRiKql9akH2vhkeRNDWYIyv5MigwkaVItalSFmOAru/JgrJf7XurjKBmWJAVnWRh70a6yFaR+Ft1/QUw==",
+    "length": 874708
+  },
+  {
+    "path": "data/flutter_assets/assets/fonts/Vazirmatn-Black.ttf",
+    "calculatedHash": "AFnwrwJ/SXYif4YQt7BSFfKXujDba9nwCvy6oPX+e98IUO+MbhRKCM1zXIT3+rj89WTVs5oQAKzyp5WQ2EESWQ==",
+    "length": 123376
+  },
+  {
+    "path": "data/flutter_assets/assets/fonts/Vazirmatn-Bold.ttf",
+    "calculatedHash": "HeTw9j1LA/CBYHJzcimZ4UHFgrwoATNAwFROKIn3d89QMqPQjXxnxIU9sZkad/5WVSJDOFxy0ieAm57GkVaCGA==",
+    "length": 123036
+  },
+  {
+    "path": "data/flutter_assets/assets/fonts/Vazirmatn-Light.ttf",
+    "calculatedHash": "QaU/smT8UgxMKrrhDUL1p+/vutqMhsmbyeEK2/9i08NuIfHrZWNjmGloc2kUctjMjDDgdNvpPF8rJlemmWPJsQ==",
+    "length": 122920
+  },
+  {
+    "path": "data/flutter_assets/assets/fonts/Vazirmatn-Medium.ttf",
+    "calculatedHash": "coSnhgyHqncWQMgpiOpQS37O0kppRbod6hxV/HZwsQkiEZ7s6+eUavLpZoTJXLmMzBI4N0Wmbc3KCndh5xZJ0w==",
+    "length": 122656
+  },
+  {
+    "path": "data/flutter_assets/assets/fonts/Vazirmatn-Regular.ttf",
+    "calculatedHash": "I8dFVonOd4poPmNdxFqtaik+lIXfKQc6Jwaw0Gzzr1jVOp48Oh/Uy5znE1v8WazIPXu2qMhKgIfaKFvtQ4nCbg==",
+    "length": 122752
+  },
+  {
+    "path": "data/flutter_assets/assets/fonts/YekanBakh-Light.ttf",
+    "calculatedHash": "oCG2XVxDBL3oIRMpiSP08q88vz/H2g6Sp04HKP02LdQ+R83ok76MDvTohlq2meMF43d6WSRoGnC2nfBhEu3ImQ==",
+    "length": 120356
+  },
+  {
+    "path": "data/flutter_assets/assets/fonts/YekanBakh-Regular.ttf",
+    "calculatedHash": "S847+D3eOrhqULCUis/PfNfV9x3wJPYoxmj4ZAL7Qz6ZH69REBwysvvnFxNeqtwTdysedYgNxq1i0DmLb/iMuA==",
+    "length": 121364
+  },
+  {
+    "path": "data/flutter_assets/assets/fonts/YekanBakh-SemiBold.ttf",
+    "calculatedHash": "naQk90j/w86H4NnZbiqeYcwQ32Iz45lCAXNok65O6KstESZWntJc82c9WPrZgHCAeV0W1fvVORlNClbVBoBamg==",
+    "length": 121280
+  },
+  {
+    "path": "data/flutter_assets/assets/fonts/YekanBakhFaNum-Black.ttf",
+    "calculatedHash": "/D4Xn6aI+lwX8H7d4G1MWGdRetOHojHsd7CAoS4V/qElSXobi6tWgS48cJkEGKWVbfgT6fGHWdjmk8kJLTLWzg==",
+    "length": 77996
+  },
+  {
+    "path": "data/flutter_assets/assets/fonts/YekanBakhFaNum-Bold.ttf",
+    "calculatedHash": "Ynb1+4qTKG0jxQMmrHWTW01V1rrxc9UTkN4Y08HlTpSqjJ6hOUh1Fjc20v038rjwikfWrx+cp46twkZMRdOM2w==",
+    "length": 77012
+  },
+  {
+    "path": "data/flutter_assets/assets/fonts/YekanBakhFaNum-ExtraBlack.ttf",
+    "calculatedHash": "bpRqXAGlgShHcfKiWVdlFixzNvjturwtE3mBIkv+fp8pWNUDFjgoK9Ow2WT4mEMr4zg6iHdIkrZgPp+i5gPeug==",
+    "length": 79128
+  },
+  {
+    "path": "data/flutter_assets/assets/fonts/YekanBakhFaNum-ExtraBold.ttf",
+    "calculatedHash": "FJ3YG7qF8aY5ovuPB+dJCHyUYyHgXcOA0ZKAMqJmBGt7mlCmOPHB9Y2WcaS9EsV7aTFvOBggqXcVI0hbYOx9lQ==",
+    "length": 77456
+  },
+  {
+    "path": "data/flutter_assets/assets/fonts/YekanBakhFaNum-Light.ttf",
+    "calculatedHash": "p6ecILygEZrysX2CazWyZNRysFyHvf6w2/ew1w6FEi4GNnLxvvLmdaDCxxsWOaug7d95Zj777hZCQusNk6J0OA==",
+    "length": 76008
+  },
+  {
+    "path": "data/flutter_assets/assets/fonts/YekanBakhFaNum-Regular.ttf",
+    "calculatedHash": "eu5mBmqFJiLujbc1FgpmJJZVJruS5jWvmSoaFchce3RuMpHxnvfa08X4qwadMBkdNcBDyta9CTW/h/0l7/EV2w==",
+    "length": 76808
+  },
+  {
+    "path": "data/flutter_assets/assets/fonts/YekanBakhFaNum-SemiBold.ttf",
+    "calculatedHash": "hAlCLif+syz0DAkAmUbAyvLkt3zrYn0bfhucttZgGk5VL0sL5XuvrPVri9zMuBi+IpsIR9UbKSO+WyVvvfw0Gw==",
+    "length": 76848
+  },
+  {
+    "path": "data/flutter_assets/assets/fonts/YekanBakhFaNum-Thin.ttf",
+    "calculatedHash": "Kui9XHqKvetD1zlu4YWezp9EEO10AN2iAwIew9miRelNWKJwuxI3WZgCZNDi5rIhYEg1jz47WFBhLzk3Il6kWA==",
+    "length": 75652
+  },
+  {
+    "path": "data/flutter_assets/assets/images/Invoice.svg",
+    "calculatedHash": "wwWzwD9wKf5R30fuxAb9/hrfT27JOg/ZSkE6pN/4uLOdklqWKPHThhbwFdxVNJ+CwwNlEvuslTdApiEOje7G+A==",
+    "length": 1209
+  },
+  {
+    "path": "data/flutter_assets/assets/images/Invoice_filled.svg",
+    "calculatedHash": "1RNfcp6Yt/nh2YV2fVh2OYUvULv3HJgzK6U/sEk0eSO3Oq9UYqm2COj1Im/M3Eq88n08wymF/CaNILKpaU7nDQ==",
+    "length": 1137
+  },
+  {
+    "path": "data/flutter_assets/assets/images/about.svg",
+    "calculatedHash": "H/BCOidBNYbUK9fbv9nPMfyNrtyv+S9Azi5pMqkR4iWsrJLhGZoeUWZddgwSimLkYRQ+DILPsXrmry01Km0+vw==",
+    "length": 509
+  },
+  {
+    "path": "data/flutter_assets/assets/images/alert_filled.svg",
+    "calculatedHash": "W8XWPuu8wj7DMwZBImmq7FtjJmPvOLif1oqDmYpyg4Ibs2QjEZQYHgaUOr/zsX630pItkNjlXk/BB1Yh3Rj14g==",
+    "length": 1129
+  },
+  {
+    "path": "data/flutter_assets/assets/images/analytics.svg",
+    "calculatedHash": "WJpaKhHTPIM7rPR74ynl7QVVPhLmuVOb6mjkY9AKpuvvyf5fbgOvG7y8wlCHULVPqYfgynpu5qH1lzx0Npi6FQ==",
+    "length": 1168
+  },
+  {
+    "path": "data/flutter_assets/assets/images/analytics_filled.svg",
+    "calculatedHash": "B6ndfFE4HAkI6r73i/KOiiw4BXEeh8xH8O8XLB2b2+a51DmN86UxFCYl75bzVhcr+dzh96OYTYpCHCI+j2/KOw==",
+    "length": 915
+  },
+  {
+    "path": "data/flutter_assets/assets/images/app_icon.png",
+    "calculatedHash": "p4g8FpxrzBvsIvaduukvmdbJPubZkxEU/x+nNCmkHnsCXXf/eJhKvhhJ8jRmdwQdpyID3k5+0NwtU7LLhKCX+Q==",
+    "length": 708281
+  },
+  {
+    "path": "data/flutter_assets/assets/images/currencies.svg",
+    "calculatedHash": "wvGvhxkALRNeiWmOsIp4QAwBMrVI4sFRdTIiHZ8Mq+gMv/S2gatiSVZjdQBh+kewo8wB01Z9dO+qGGEBEOnkpQ==",
+    "length": 13121
+  },
+  {
+    "path": "data/flutter_assets/assets/images/currencies_filled.svg",
+    "calculatedHash": "9aRCsIEorH2Ywuc/RddY+MNtLdi7XitWNDmzAnxRrUQ7euGfr9uME+4jOfvFcAHaLGTSj/65wR49VDTSYIeBmA==",
+    "length": 2551
+  },
+  {
+    "path": "data/flutter_assets/assets/images/customer.svg",
+    "calculatedHash": "0giXefN64KZDQZ43BDo19MGrl2dRbmTB0877xatiJti/+dtFs6GYzjGDRpEVIRy9EVV6u0HpC0RjU2ouEqFGUg==",
+    "length": 3861
+  },
+  {
+    "path": "data/flutter_assets/assets/images/customer_filled.svg",
+    "calculatedHash": "bUmhsKXN8+PYvgAhPHJlovbub4eEUL8ucGqe6KrdxaTtExBS0X13q+8xFn8t6eL605lDSPiaDALh75Trhdfqhg==",
+    "length": 1965
+  },
+  {
+    "path": "data/flutter_assets/assets/images/cutter.svg",
+    "calculatedHash": "dOYRTnNt/QGJCwb4Ya2SDipKy8XEpqEvOWSyd+U2K2dWTSP3Zwj3O+a90ua3O/CpkhIRlEHxJHVw3nD5B4IaZw==",
+    "length": 1783
+  },
+  {
+    "path": "data/flutter_assets/assets/images/cutter_filled.svg",
+    "calculatedHash": "ENy4Z+4lRYadtW1UIixQmKPAEXjGdFBKxeUQeL+UeVLvb0cCWU8uwI24V3tUCsOPnR148b/uOpbAACg9KI5UVQ==",
+    "length": 1022
+  },
+  {
+    "path": "data/flutter_assets/assets/images/date.svg",
+    "calculatedHash": "R2SuHpiLTwVfZA+y04egITQp3dq2WlOixE+WnavrOpWEIwSpAB7QyMQO8VpcJdcwXzBvTe5JDVmAP9bI7k1CTg==",
+    "length": 1936
+  },
+  {
+    "path": "data/flutter_assets/assets/images/delete.svg",
+    "calculatedHash": "/JptgV+k/Hbtp4Tz0CcqeepIAWRMTl+L+DbVkN+hVk5hyQWt/F2StjoLbPthtQonNJEtLZ6armZFqH+67DzkMg==",
+    "length": 1070
+  },
+  {
+    "path": "data/flutter_assets/assets/images/edit.svg",
+    "calculatedHash": "Jq9svbydLgI25ogxbHi0GVJSlddvXolZ0Z48eHgkgFfOA1upTllSXbufD47pctzPFb5GhFhJen4RRUH9efEQ8g==",
+    "length": 745
+  },
+  {
+    "path": "data/flutter_assets/assets/images/expenses.svg",
+    "calculatedHash": "yPfZn3Gd8d7lUwGJxFk7xoYCJ6UjrONdfv46Y4x13pzJe3KSvyWmxyGVWFJVIZyDcOk+B3l3Q3wYX3ZjlFu4SQ==",
+    "length": 1845
+  },
+  {
+    "path": "data/flutter_assets/assets/images/expenses_filled.svg",
+    "calculatedHash": "MEcN8nh7rUOeUBeP5sjdOqGqoTsACZGd9fCtQCQdRizQNfEX/TDxH49eiIthdny9CYGqOqPep9b3dJeLHuFbqA==",
+    "length": 959
+  },
+  {
+    "path": "data/flutter_assets/assets/images/general.svg",
+    "calculatedHash": "h0+s0QaPxCBrNt4KrbF/21tacbJZOI+NMdpdctomSdMxQ5f5+WN/DIcvtnJBS6bzWZaRsKx8NWj6lk/TXHdPEA==",
+    "length": 8491
+  },
+  {
+    "path": "data/flutter_assets/assets/images/general_filled.svg",
+    "calculatedHash": "A4ImVIh1NDl2Ql/lbMjml8ovGJaDU/RU279nurtppa0CTzEbl8ApSL0ef9GsDlmvZfuODk4RguOufslAFAF1ag==",
+    "length": 2677
+  },
+  {
+    "path": "data/flutter_assets/assets/images/hadid_logo.jpg",
+    "calculatedHash": "TjdNuP7UzczC6Sh72RDXRXd5D4zuQoYmuxr3ryteUB2R7t1+JtSyYKa+Y9kSTS1ex1oTSFAVi2S0CxJ9i0oTbw==",
+    "length": 19309
+  },
+  {
+    "path": "data/flutter_assets/assets/images/home.svg",
+    "calculatedHash": "dMwHzrGf3VbP1Je2kFDqcYcLtZkuj0BEfWpjbcjqrl6MkA6uEACGTwy++APSIVscOwTXoYkhdUoMgei0fMvEJg==",
+    "length": 1859
+  },
+  {
+    "path": "data/flutter_assets/assets/images/home_filled.svg",
+    "calculatedHash": "bveT6xfWCeKwXJtACUC/PZkPoy97WXm+l6H0r9wMM/P6ZgrPIea7rnPdLmfynNC6pCO+9v4l73aIiGtgAcGxdg==",
+    "length": 280
+  },
+  {
+    "path": "data/flutter_assets/assets/images/inventory.svg",
+    "calculatedHash": "M96mC6NG2SR5BUsV6tbhXB/xys2KVxXvQyxMVLIK3C4Csq0yIK1P7DulW3AJjC/8D6sjw21mbtzm9Vu21duVeQ==",
+    "length": 1040
+  },
+  {
+    "path": "data/flutter_assets/assets/images/inventory_filled.svg",
+    "calculatedHash": "lUYwePkc0EnYumgwmsrOLgYJ7rlsijsZSLXafgNuH5lKIQQFCjXg/YL+wJGd2tkUBrVuL3COscihFBPod0+c5w==",
+    "length": 625
+  },
+  {
+    "path": "data/flutter_assets/assets/images/language.svg",
+    "calculatedHash": "Nu4t7mouWFy4Vs25+77k1xlHuaATqUpVRUzytEszmxSaLvqJWNBMtRvG2ZF+7qDmiPxnmN9rakMgvirvbpO5/A==",
+    "length": 2347
+  },
+  {
+    "path": "data/flutter_assets/assets/images/language_filled.svg",
+    "calculatedHash": "OX33pfTGvEvzarDnwHJCqPCgZ+50+jeWob6G7c6Au/gRCKDKRg0Bub8mdOAXCu4P2RMkob0maKrP8G/+rOl0mA==",
+    "length": 2305
+  },
+  {
+    "path": "data/flutter_assets/assets/images/message.svg",
+    "calculatedHash": "N+YaohA2c0Z1iG9q/hSOQ3+oS64E7XXPdGqnLl/x14jUXINGNiThUUO77dbJvqRbUGpxHNgVLZFT0RRLIR0Z7g==",
+    "length": 349
+  },
+  {
+    "path": "data/flutter_assets/assets/images/message_filled.svg",
+    "calculatedHash": "0FffTugy+3q5QqZPdXRRwRLFs7V2otYk07Slotbg2xCIFhjMApe4AxLUQZVy4INqPgJ3NiTQnWTdTmdK1CywJA==",
+    "length": 2319
+  },
+  {
+    "path": "data/flutter_assets/assets/images/notifications.svg",
+    "calculatedHash": "q+i96Cs9zBxzM2FUCnD1un8uW0UHKZSmxA4Yk7l+rGx2HKMSG2EqKwtM4exR2HFowg0qeLgk1/FxN73G3j3ySA==",
+    "length": 1183
+  },
+  {
+    "path": "data/flutter_assets/assets/images/notifications_filled.svg",
+    "calculatedHash": "FTOHjwIH7aCfXwQCLuiCdO/w64GrZTPU+gmTN0jrSoPhVi4RCk3NITVcK1DGmynPiNJAQCZGwYqHJjVCRnbJNg==",
+    "length": 543
+  },
+  {
+    "path": "data/flutter_assets/assets/images/order.svg",
+    "calculatedHash": "CI/RNtIJVAKgXRvZ6NuQRs73i7oKMefPXyE7Usm4jW1Sc+Szsnef1XXFQQV6pGkVL69CwejWQjlCxBHzo+bgRg==",
+    "length": 1311
+  },
+  {
+    "path": "data/flutter_assets/assets/images/orders_filled.svg",
+    "calculatedHash": "Fc0ogVvffgOmxSjqg2z2SNFhSP0V1CamphadL9rlMzUaYTqsxylyMYq+VlWuc7LA4oOZG+3ayUk1Tvo9tCN2pA==",
+    "length": 666
+  },
+  {
+    "path": "data/flutter_assets/assets/images/permission.svg",
+    "calculatedHash": "8Wb5zgyNbkz2TZklK7LQ1GmJe9HsHeQaBNsmWSL8Y8ICHqiM/35+nLT8ydAAO+2J4bLxFbctvrGGEobNA7z3fg==",
+    "length": 6977
+  },
+  {
+    "path": "data/flutter_assets/assets/images/permissions_filled.svg",
+    "calculatedHash": "8UemqUUa/AgGcM7fHxqBTyS9Q5Jji5a67acGaxkl9lLCF4IN1J1UREdj93IblkisybNHuJH3vJ1P1cdrXwgx8g==",
+    "length": 3472
+  },
+  {
+    "path": "data/flutter_assets/assets/images/plus.svg",
+    "calculatedHash": "FOXf63BH/skjBtKeOz2R7fud0kZMf8DUyG72TuS9+i7a9gSiQ5AC8altooDLF5HuRAx+C5+V6n7vMCgaVpoMfA==",
+    "length": 372
+  },
+  {
+    "path": "data/flutter_assets/assets/images/product.svg",
+    "calculatedHash": "d5AjGmS7PsnV+Z0Ap+Yq+/7ID5/IpfLO5gk+GhcjFmfSP+yJWN07s50WA0r5UNzArPZLPVYnlw5qAEoxPCqdhw==",
+    "length": 1523
+  },
+  {
+    "path": "data/flutter_assets/assets/images/product_filled.svg",
+    "calculatedHash": "3fhZCKTHcPDhlSDO4aoVuIeaI7ntxqUlkTo1XdmL0JrxRgsHHxfRbq5YOLUD/SXue1VD6BlCV4W8hlb5Xhu0Nw==",
+    "length": 1453
+  },
+  {
+    "path": "data/flutter_assets/assets/images/reports.svg",
+    "calculatedHash": "lYruBB5knFsxjmqGycuycZu7gXt8cYX6f/sskb0K6gh/I3i+Lr+EIUbYZ/Bg7Q/8lX9zaWW11EGr9NpNVV21qQ==",
+    "length": 1937
+  },
+  {
+    "path": "data/flutter_assets/assets/images/reports_filled.svg",
+    "calculatedHash": "HWImNizo4FDrXjf/+q0J0XnFriMOeOza7Jv1GuxaZAPhLmGnCVQXvlvpePBNyPa1i8+xTQmpc+Gqz0ChT9clhw==",
+    "length": 1857
+  },
+  {
+    "path": "data/flutter_assets/assets/images/reviews.svg",
+    "calculatedHash": "0kE3nVnjyyis/67kmRHH5Gamkk3DmgSiybid08UVd6nK4ap+OK+GX/QE2CJdCFujruVJZmUBRIA7LevZ0ysK2w==",
+    "length": 2069
+  },
+  {
+    "path": "data/flutter_assets/assets/images/reviews_filled.svg",
+    "calculatedHash": "Ecu2dhGxFq9EXlzwQAvf64KgGnyptEy35tIPJWrEEbnrcJ2H26GYY7jKxx5jl7SWTSN9nCiVj6i4sy2MfSJBPA==",
+    "length": 902
+  },
+  {
+    "path": "data/flutter_assets/assets/images/sales.svg",
+    "calculatedHash": "x9Go6jDKSrsNNL1IRLGv5AoSyVAlGpzuX7lF5vdgXSsA0e4diKIeabSQtCUi0UswRkMQ/C5Qn+hhfRbsDkN9mw==",
+    "length": 3224
+  },
+  {
+    "path": "data/flutter_assets/assets/images/sales_filled.svg",
+    "calculatedHash": "0iQIFvQthvvnPuq+lmmMlfFe59ZFtuM7HWeqpWlEtRcC6CEppTnE+y6LXkGewSY935OUWeDynEo+RCoZ49C5DQ==",
+    "length": 2824
+  },
+  {
+    "path": "data/flutter_assets/assets/images/save.svg",
+    "calculatedHash": "U6+4D+ErEvz3Vr8GCFpdI3pdic+IRbaPiDXQ64bTlEhEn2SxyF+9MmBrqPZXcEO29WbxfZ6BJiyfHXnTU70otg==",
+    "length": 479
+  },
+  {
+    "path": "data/flutter_assets/assets/images/setting.svg",
+    "calculatedHash": "5ggyyy4t4y/oOPbMzWE3AsMG5xplzy/jrFIug46IX1xIsQRE6f/55VypDgg7mRyXakLBu/Rzx5VPP0E6UlwKbw==",
+    "length": 1402
+  },
+  {
+    "path": "data/flutter_assets/assets/images/setting_filled.svg",
+    "calculatedHash": "tHbEpBKjUpZtOWdKl2gokyt86bjQpksYq/zdpknkCrM/GDybF7JapJjbhaenMEU8Cwvq3QNgF6APgk4SR6p66A==",
+    "length": 904
+  },
+  {
+    "path": "data/flutter_assets/assets/images/suppliers.svg",
+    "calculatedHash": "gYMO36XMKsripl8kf7q3FA05pMJx0CMqfce1zBMJTIg9k7F9YNIVGwL2BCHn5bsMTBCEkd++9WKRVnFz6n6naQ==",
+    "length": 3796
+  },
+  {
+    "path": "data/flutter_assets/assets/images/suppliers_filled.svg",
+    "calculatedHash": "OYMa2gjQYfLXo8iUh6RKJak+wkjgqWJBcKO1JHgNLyy9RRXCStAfA4BKFrLttG89OlxaLKWBhcBzs8fQ5biapg==",
+    "length": 2175
+  },
+  {
+    "path": "data/flutter_assets/assets/images/theme.svg",
+    "calculatedHash": "gCZ9Ksqnf7wbI4ByDzjF6LmCRAimRgZS2R2wQXZaBaS/TyvJSc+HaE/TXmGJ/EIh6vXjybQdNosRoWxSQq5NOA==",
+    "length": 515
+  },
+  {
+    "path": "data/flutter_assets/assets/images/users.svg",
+    "calculatedHash": "lQgjKbil1NwAS/Xh77FH3Qs6V+Gv/hBsbfQwx958GrbUMoyGRh1LcY83ayzg1sjPUqqNaowkx/JNwVW9HfVf4w==",
+    "length": 2542
+  },
+  {
+    "path": "data/flutter_assets/assets/images/users_filled.svg",
+    "calculatedHash": "fYwOXiP+XhgR+9X0n/wJlAWhTWXFPQB3AYunVh4LUpLq87UM5ECQ/jMY0NLW9vvrqNX+9xjgjNMh7QPxIxkobQ==",
+    "length": 2154
+  },
+  {
+    "path": "data/flutter_assets/assets/lang/en.json",
+    "calculatedHash": "M51I7/dRV+5GV2VLT0ZyD2AZqAJ47i4QucS9uHJzwbBJHiFn3bv6u5fVDp6vzFSNGg1SMApp8QDzdj51FN+xlA==",
+    "length": 87643
+  },
+  {
+    "path": "data/flutter_assets/assets/lang/fa.json",
+    "calculatedHash": "urzNTUQGwmqQSUHKB/9zARD6RQffFQBmO3nMKn2UcB8cwsj9foYnm3wQ+Hns0XsdfE4ccO+guzofbgjSbLpAGA==",
+    "length": 124399
+  },
+  {
+    "path": "data/flutter_assets/assets/lang/ps.json",
+    "calculatedHash": "m75kNa7Iq+JK9w8dJEs5cl9ZN65g2oA6Djq+gpPJWxlZhz7w7BDlrczq8kYj1rSoc2EG6hsELxAgvTl+w8zJuQ==",
+    "length": 114270
+  },
+  {
+    "path": "data/flutter_assets/fonts/MaterialIcons-Regular.otf",
+    "calculatedHash": "m8DfSD0rNhUipfYHLxIyFb3gojQL1KYObKtsR96NjtPvtfpJhUzD79VUEFYx3vjtWjOGfWsjd/6H68hGuYCn8w==",
+    "length": 1645184
+  },
+  {
+    "path": "data/flutter_assets/packages/cupertino_icons/assets/CupertinoIcons.ttf",
+    "calculatedHash": "ZvywIZ/gc9kSYgNomYFRJHqWq0xTTEl77b/xa8CDEQID/AQW+LzH6Z5VU6rwMGAdtX0wGUA4SHa8+hDZPp+aPQ==",
+    "length": 257628
+  },
+  {
+    "path": "data/flutter_assets/shaders/ink_sparkle.frag",
+    "calculatedHash": "91VIeHpmSQilfDaBqv9l1onq1dzwdEwBw77EIZyzqCdWQSJBru4fnC3ZcLiShzniPwyaMH1ACBwqCgn3qOQXeA==",
+    "length": 21856
+  },
+  {
+    "path": "data/flutter_assets/shaders/stretch_effect.frag",
+    "calculatedHash": "YxxyywHr+iYGoXUluIUrJvOpnp6ARBH0QeWQLHsj9b7t1QmkUJG43ZHmsZ/Wip+dJa6iTvRQyLe6Nzh2zRlvyg==",
+    "length": 17624
+  },
+  {
+    "path": "data/icudtl.dat",
+    "calculatedHash": "J1d+LsWrROxtsLPDkNs3rCOmSBZbuofXIyNLcQeuSVFNbblj0bDWZivepJ57U29APYFsTjCk0QUTMSwMJHqRoQ==",
+    "length": 862304
+  },
+  {
+    "path": "desktop_updater_plugin.dll",
+    "calculatedHash": "SSbfmTk8xqikkH3m1K9++HePEHj0Q9obh5UAxdlQrNVCjHTnqL1mgGXXOoi9quay0IYTtsNjsnsl0SI0EI5kIg==",
+    "length": 139264
+  },
+  {
+    "path": "flutter_windows.dll",
+    "calculatedHash": "/yHskNjWKnJqeeUKwinT3VwhOeM0x4RMnTacRnqhYbIdhX1cY7NbXSTUu/pDsoAwFSMp4FCNIPigHLaaCNoXuw==",
+    "length": 21284352
+  },
+  {
+    "path": "hadid_exchange.exe",
+    "calculatedHash": "UHLjZO2HiBPVkRQaZM6YdT1jnnV+xQCng7jwkRr4pp/g1vSULPh5Qb4XGGvPslXWsWtnCCCt3EH0mwIg69m/EA==",
+    "length": 101376
+  },
+  {
+    "path": "sqlite3.dll",
+    "calculatedHash": "soaKY3TtNQe5V2Fd8DM6HwDEE4b9WZVLDUlnm6XkksmZ2lk31uUSkmADnGFNrEy9Qy+oA9ijH/FIyVcE9V6IMg==",
+    "length": 1684480
+  }
+]

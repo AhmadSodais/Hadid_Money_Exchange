@@ -190,26 +190,26 @@ class _CurrencyCard extends StatelessWidget {
       tone: cash < 0 ? GfKpiTone.error : GfKpiTone.normal,
       onTap: () => context.go(AppRoutes.reports),
       currencies: [
-        // GfKpiCurrencyLine(
-        //   amountText: MoneyFormat.amount(cash, currency),
-        //   currencyLabel: 'موجودی کل صندوق',
-        //   color: cash < 0 ? AppColors.error : null,
-        //   emphasized: true,
-        // ),
-        // GfKpiCurrencyLine(
-        //   amountText: MoneyFormat.amount(owedToCustomers, currency),
-        //   currencyLabel: 'طلب مشتریان',
-        // ),
-        // GfKpiCurrencyLine(
-        //   amountText: MoneyFormat.amount(owedByCustomers, currency),
-        //   currencyLabel: 'بدهی مشتریان',
-        // ),
-        // GfKpiCurrencyLine(
-        //   amountText: MoneyFormat.amount(own, currency),
-        //   currencyLabel: 'سرمایه خود صرافی',
-        //   color: own < 0 ? AppColors.error : AppColors.success,
-        //   emphasized: true,
-        // ),
+        GfKpiCurrencyLine(
+          amountText: MoneyFormat.amount(cash, currency),
+          currencyLabel: 'موجودی کل صندوق',
+          color: cash < 0 ? AppColors.error : null,
+          emphasized: true,
+        ),
+        GfKpiCurrencyLine(
+          amountText: MoneyFormat.amount(owedToCustomers, currency),
+          currencyLabel: 'طلب مشتریان',
+        ),
+        GfKpiCurrencyLine(
+          amountText: MoneyFormat.amount(owedByCustomers, currency),
+          currencyLabel: 'بدهی مشتریان',
+        ),
+        GfKpiCurrencyLine(
+          amountText: MoneyFormat.amount(own, currency),
+          currencyLabel: 'سرمایه خود صرافی',
+          color: own < 0 ? AppColors.error : AppColors.success,
+          emphasized: true,
+        ),
       ],
     );
   }

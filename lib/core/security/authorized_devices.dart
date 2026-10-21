@@ -16,6 +16,11 @@ abstract final class AuthorizedDevices {
 
     "34-E6-D7-20-11-E6",
     "3C-A9-F4-AF-C1-E8",
+
+    // This workstation: active NIC plus the other physical adapters.
+    "00-E1-8C-A3-12-36",
+    "00-E1-8C-A3-12-3A",
+    "54-E1-AD-C5-C6-55",
   ];
 
   /// Normalized set (`AABBCCDDEEFF`, uppercase) for O(1) lookups.
