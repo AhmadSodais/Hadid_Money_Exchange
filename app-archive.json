@@ -3,46 +3,12 @@
   "description": "Hadid Money Exchange — offline currency exchange accounting for Windows.",
   "items": [
     {
-      "version": "1.0.3",
-      "shortVersion": 4,
-      "changes": [
-        { "type": "fix", "message": "Dashboard layout fix" }
-      ],
-      "date": "2026-10-21",
-      "mandatory": false,
-      "url": "https://raw.githubusercontent.com/AhmadSodais/Hadid_Money_Exchange/main/releases/1.0.3+4-windows",
-      "platform": "windows"
-    },
-    {
-      "version": "1.0.2",
-      "shortVersion": 3,
-      "changes": [
-        { "type": "fix", "message": "Dashboard layout fix" }
-      ],
-      "date": "2026-10-21",
-      "mandatory": false,
-      "url": "https://raw.githubusercontent.com/AhmadSodais/Hadid_Money_Exchange/main/releases/1.0.2+3-windows",
-      "platform": "windows"
-    },
-    {
-      "version": "1.0.1",
-      "shortVersion": 2,
-      "changes": [
-        { "type": "feat", "message": "Added in-app update check in Settings" },
-        { "type": "fix", "message": "Clearer update check messages" }
-      ],
-      "date": "2026-10-21",
-      "mandatory": false,
-      "url": "https://raw.githubusercontent.com/AhmadSodais/Hadid_Money_Exchange/main/releases/1.0.1+2-windows",
-      "platform": "windows"
-    },
-    {
       "version": "1.0.0",
       "shortVersion": 1,
       "changes": [
-        { "type": "feat", "message": "First release" }
+        { "type": "feat", "message": "First public release" }
       ],
-      "date": "2026-10-21",
+      "date": "2026-10-22",
       "mandatory": false,
       "url": "https://raw.githubusercontent.com/AhmadSodais/Hadid_Money_Exchange/main/releases/1.0.0+1-windows",
       "platform": "windows"

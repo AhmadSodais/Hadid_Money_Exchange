@@ -1,7 +1,7 @@
 name: hadid_exchange
 description: "Hadid Money Exchange — offline currency exchange accounting for Windows."
 publish_to: 'none'
-version: 1.0.3+4
+version: 1.0.0+1
 
 environment:
   sdk: ^3.12.2
@@ -24,9 +24,7 @@ dependencies:
   shared_preferences: ^2.5.3
   file_picker: ^10.2.0
   # Pinned to the official repo's unpublished 5.0.0 (archive ^4, required by
-  # desktop_updater). Hosted excel 4.0.6 pins archive ^3 and no longer
   # compiles against archive 4. Switch back to hosted `excel: ^5.0.0`
-  # once 5.0.0 is published on pub.dev.
   excel:
     git:
       url: https://github.com/justkawal/excel.git

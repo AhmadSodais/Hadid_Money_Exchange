@@ -1,4 +1,4 @@
-// ignore_for_file: unnecessary_null_comparison
+// ignore_for_file: dead_code, unnecessary_null_comparison
 
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
