@@ -6,7 +6,10 @@
       "version": "1.0.2",
       "shortVersion": 3,
       "changes": [
-        { "type": "feat", "message": "Describe your change here" }
+        {
+          "type": "feat",
+          "message": "Describe your change here"
+        }
       ],
       "date": "2026-10-25",
       "mandatory": false,
@@ -17,7 +20,10 @@
       "version": "1.0.1",
       "shortVersion": 2,
       "changes": [
-        { "type": "feat", "message": "First public release" }
+        {
+          "type": "feat",
+          "message": "First public release"
+        }
       ],
       "date": "2026-10-22",
       "mandatory": false,
