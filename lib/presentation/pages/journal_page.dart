@@ -115,19 +115,15 @@ class _JournalPageState extends State<JournalPage> with RevisionReload {
     );
   }
 
-  /// Positive = money in / won; negative = money out / lost. Buy/sell use the
-  /// traded (source) side. Rate and counter amount stay in the detail dialog.
+  /// Positive = money in / won; negative = money out / lost.
+  /// Buy/sell return null here — those use [_exchangeSides] instead.
   int? _signedDetailMinor(PostedTransaction t) {
     final source = t.sourceAmountMinor;
     return switch (t.type) {
-      TransactionType.receipt ||
-      TransactionType.openingCash ||
-      TransactionType.buy =>
-        source,
-      TransactionType.payment ||
-      TransactionType.expense ||
-      TransactionType.sell =>
+      TransactionType.receipt || TransactionType.openingCash => source,
+      TransactionType.payment || TransactionType.expense =>
         source == null ? null : -source,
+      TransactionType.buy || TransactionType.sell => null,
       TransactionType.openingCustomer ||
       TransactionType.customerAdjustment ||
       TransactionType.cashAdjustment =>
@@ -136,7 +132,80 @@ class _JournalPageState extends State<JournalPage> with RevisionReload {
     };
   }
 
+  /// Both legs of a buy/sell from the exchange's view: received then paid.
+  /// Buy receives the traded currency and pays the counter; sell is the reverse.
+  ({int receivedMinor, String? receivedCurrency, int paidMinor, String? paidCurrency})?
+      _exchangeSides(PostedTransaction t) {
+    final source = t.sourceAmountMinor;
+    final dest = t.destAmountMinor;
+    if (source == null || dest == null) return null;
+    return switch (t.type) {
+      TransactionType.buy => (
+          receivedMinor: source,
+          receivedCurrency: t.sourceCurrency,
+          paidMinor: dest,
+          paidCurrency: t.destCurrency,
+        ),
+      TransactionType.sell => (
+          receivedMinor: dest,
+          receivedCurrency: t.destCurrency,
+          paidMinor: source,
+          paidCurrency: t.sourceCurrency,
+        ),
+      _ => null,
+    };
+  }
+
+  Color _amountColor(PostedTransaction t, int signedMinor) {
+    if (!t.isActive) return AppColors.textMuted;
+    if (signedMinor > 0) return AppColors.success;
+    if (signedMinor < 0) return AppColors.error;
+    return AppColors.textPrimary;
+  }
+
+  TextStyle _amountStyle(PostedTransaction t, Color color) =>
+      AppTypography.bodySemiBold.copyWith(
+        color: color,
+        decoration: t.status == TransactionStatus.reversed ? TextDecoration.lineThrough : null,
+        fontFeatures: const [FontFeature.tabularFigures()],
+      );
+
+  Widget _amountChip(PostedTransaction t, AppSession s, int signedMinor, String? code) {
+    final sign = signedMinor > 0 ? '+' : (signedMinor < 0 ? '−' : '');
+    final color = _amountColor(t, signedMinor);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withValues(alpha: 0.22)),
+      ),
+      child: Text(
+        '$sign${MoneyFormat.withName(signedMinor.abs(), s.currency(code), fallbackCode: code)}',
+        textDirection: TextDirection.ltr,
+        style: _amountStyle(t, color),
+      ),
+    );
+  }
+
   Widget _details(PostedTransaction t, AppSession s) {
+    final sides = _exchangeSides(t);
+    if (sides != null) {
+      return Wrap(
+        spacing: 8,
+        runSpacing: 4,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          _amountChip(t, s, sides.receivedMinor, sides.receivedCurrency),
+          Icon(
+            Icons.currency_exchange_rounded,
+            size: 16,
+            color: t.isActive ? AppColors.textSecondary : AppColors.textMuted,
+          ),
+          _amountChip(t, s, -sides.paidMinor, sides.paidCurrency),
+        ],
+      );
+    }
     final signed = _signedDetailMinor(t);
     if (signed == null) {
       return Text(
@@ -144,24 +213,7 @@ class _JournalPageState extends State<JournalPage> with RevisionReload {
         style: AppTypography.body.copyWith(color: AppColors.textMuted),
       );
     }
-    final src = s.currency(t.sourceCurrency);
-    final sign = signed > 0 ? '+' : (signed < 0 ? '−' : '');
-    final color = !t.isActive
-        ? AppColors.textMuted
-        : signed > 0
-            ? AppColors.success
-            : signed < 0
-                ? AppColors.error
-                : AppColors.textPrimary;
-    return Text(
-      '$sign${MoneyFormat.withName(signed.abs(), src, fallbackCode: t.sourceCurrency)}',
-      textDirection: TextDirection.ltr,
-      style: AppTypography.bodySemiBold.copyWith(
-        color: color,
-        decoration: t.status == TransactionStatus.reversed ? TextDecoration.lineThrough : null,
-        fontFeatures: const [FontFeature.tabularFigures()],
-      ),
-    );
+    return _amountChip(t, s, signed, t.sourceCurrency);
   }
 
   @override
@@ -203,7 +255,7 @@ class _JournalPageState extends State<JournalPage> with RevisionReload {
               titleCount: _total,
               subtitle: 'برای جزئیات روی ردیف کلیک کنید؛ ویرایش و حذف از منوی ⋮ انتهای ردیف.',
               isLoading: _loading,
-              minWidth: 1050,
+              minWidth: 900,
               itemLabel: 'معامله',
               emptyText: 'معامله‌ای یافت نشد.',
               emptyHint: 'بازه تاریخ یا فیلترها را تغییر دهید.',
@@ -279,28 +331,18 @@ class _JournalPageState extends State<JournalPage> with RevisionReload {
               ],
               columns: const [
                 LedgerColumn.date(),
-                LedgerColumn.reference(),
-                LedgerColumn.text('نوع'),
                 LedgerColumn.primary('مشتری'),
+                LedgerColumn.text('نوع'),
                 LedgerColumn.description('جزئیات'),
-                LedgerColumn.status(),
                 LedgerColumn.actions(),
               ],
               rows: [
                 for (final t in _rows)
                   [
                     Text(DateFormatFa.business(t.effectiveDate), style: AppTypography.body),
-                    Text(t.referenceNo, style: AppTypography.caption, textDirection: TextDirection.ltr),
-                    TransactionTypeBadge(t.type),
                     Text(t.customerName ?? '—', style: AppTypography.body),
+                    TransactionTypeBadge(t.type),
                     _details(t, s),
-                    Text(
-                      TransactionActions.statusLabel(t),
-                      style: AppTypography.caption.copyWith(
-                        color: TransactionActions.statusColor(t),
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
                     _rowMenu(t, s),
                   ],
               ],
