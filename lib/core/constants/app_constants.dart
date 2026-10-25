@@ -4,12 +4,12 @@
 abstract final class AppConstants {
   static const String appName = 'صرافی حدید';
   static const String appNameLatin = 'Hadid Money Exchange';
-  static const String appVersion = '1.0.1';
+  static const String appVersion = '1.0.2';
 
   /// Build number; with [appVersion] this must stay aligned with
   /// `version: <appVersion>+<appBuildNumber>` in `pubspec.yaml`. The updater
   /// compares the manifest `shortVersion` against this build number.
-  static const int appBuildNumber = 2;
+  static const int appBuildNumber = 3;
 
   /// Update manifest (the release gate). Users are offered an update only
   /// when this file on the repo's `main` branch lists a `shortVersion`

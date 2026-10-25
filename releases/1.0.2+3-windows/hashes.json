@@ -1,12 +1,12 @@
 [
   {
     "path": "dartjni.dll",
-    "calculatedHash": "jNCklTux897BCfnp+omZXduPOJN9LydGjdu/sJQ1bc4KGtxPIa3QiAbqPMI1i2mvUSQQrVWqjlbEIdhbI1x48A==",
+    "calculatedHash": "XTnido8r4oBdgbrLfqBX6LpAUQ2LoUVtb0xdKFcwA7HBP+aEIz6uonpVsJDOX91zTV1KDkY55cenjSGjynXG4g==",
     "length": 58368
   },
   {
     "path": "data/app.so",
-    "calculatedHash": "MXcPpAFby8Dcr83d5d3S8hd6DjJaXKYQKK0No7I1YyyuCQXmEODG8nJv98CcKKYZWPU9Yu5y9yQWP3IJOCVdcg==",
+    "calculatedHash": "mN7azDGMT6VeZPBoNElM5ri2r1vKhWa0hvx5iIKCbcURMPXGbMOWFSHALcPX/NScnfmLPpYr8a1igkEX4koiEQ==",
     "length": 11076496
   },
   {
@@ -416,7 +416,7 @@
   },
   {
     "path": "desktop_updater_plugin.dll",
-    "calculatedHash": "q6jA/0M32ga3t5ezNKKC7HaeSktPMeaLc5UOCwLC/c1Nbkh6rT7TzoDl+H3rGV4UsFDjPgAnBa0ZYHqmFOukpg==",
+    "calculatedHash": "CEHsCPgbWqyCUinTAbT3RzPq5reouRYUp40IdOHHHJqDVIk8QnqYOdKePTvar5Hs5oi7ZFKHy4Uy8rVFTo2TNQ==",
     "length": 139264
   },
   {
@@ -426,7 +426,7 @@
   },
   {
     "path": "hadid_exchange.exe",
-    "calculatedHash": "mX8O8HGguPK9IecZA1fQVmshLFRF+n32nuUADBtMs8qP6ycJUXnX82IHaggBweVq0zslDMo89FRedgxg2Ehmrg==",
+    "calculatedHash": "gAkqR63xiquuPS4JBL07ywj6oP1oyXKHGor4tbodGkFquv3nccLWj3dthpWdoZ3c7ZxTuNEP0mvA7xJ+IQY4RA==",
     "length": 101376
   },
   {

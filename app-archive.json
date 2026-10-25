@@ -3,6 +3,17 @@
   "description": "Hadid Money Exchange — offline currency exchange accounting for Windows.",
   "items": [
     {
+      "version": "1.0.2",
+      "shortVersion": 3,
+      "changes": [
+        { "type": "feat", "message": "Describe your change here" }
+      ],
+      "date": "2026-10-25",
+      "mandatory": false,
+      "url": "https://raw.githubusercontent.com/AhmadSodais/Hadid_Money_Exchange/main/releases/1.0.2+3-windows",
+      "platform": "windows"
+    },
+    {
       "version": "1.0.1",
       "shortVersion": 2,
       "changes": [
